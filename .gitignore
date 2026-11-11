@@ -1,0 +1,28 @@
+# Dependências
+node_modules/
+
+# Next.js / build
+.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# Variáveis de ambiente: nunca commitar chaves!
+.env
+.env*.local
+!.env.example
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Vercel
+.vercel/
+
+# Sistema e editor
+.DS_Store
+Thumbs.db
+.idea/
