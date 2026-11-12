@@ -1,6 +1,6 @@
 // Postgres implementation of the Base do Catálogo. Drizzle stays inside this
 // adapter: rows are translated to the catalog's domain types on the way out.
-import { type AnyColumn, eq, sql } from "drizzle-orm";
+import { type AnyColumn, and, eq, gt, sql } from "drizzle-orm";
 import {
   type BaseDoCatalogo,
   conferirCatalogo,
@@ -8,6 +8,7 @@ import {
   type FaixaDeIdade,
   type PeriodoTarifario,
   type Proposta,
+  vagasDoGrupo,
 } from "../catalogo";
 import type { Db } from "./client";
 import {
@@ -16,6 +17,7 @@ import {
   hoteis,
   pacotes,
   periodosTarifarios,
+  preReservas,
   propostas,
   saidas,
 } from "./schema";
@@ -115,12 +117,95 @@ export function criarBasePostgres(db: Db): BaseDoCatalogo {
         .where(eq(propostas.id, id));
       return row && paraProposta(row);
     },
+
+    async lerVagasOcupadas(agora) {
+      return db
+        .select({
+          pacote: preReservas.pacote,
+          data: preReservas.data,
+          vagas: pessoasAtivas,
+        })
+        .from(preReservas)
+        .where(gt(preReservas.expiraEm, agora))
+        .groupBy(preReservas.pacote, preReservas.data)
+        .orderBy(byCodePoint(preReservas.pacote), preReservas.data);
+    },
+
+    async criarPreReserva({ idDaProposta, preReserva, agora }) {
+      const { grupo, ...campos } = preReserva;
+      const { pacote, data } = preReserva;
+      return db.transaction(async (tx) => {
+        // Locking the Saída's row makes concurrent confirmations for it wait
+        // here, one after the other, so each one counts the Vagas the
+        // previous ones took. That relies on READ COMMITTED, Postgres's
+        // default: each later statement sees what the earlier holders of the
+        // lock committed. Nothing is written before every check passes.
+        const [saida] = await tx
+          .select({ vagasTotais: saidas.vagasTotais })
+          .from(saidas)
+          .where(and(eq(saidas.pacote, pacote), eq(saidas.data, data)))
+          .for("update");
+        if (!saida) throw new Error(`Saída ${pacote} ${data} não existe`);
+        const [proposta] = await tx
+          .select({ confirmada: propostas.confirmada })
+          .from(propostas)
+          .where(eq(propostas.id, idDaProposta))
+          .for("update");
+        if (!proposta) throw new Error(`Proposta ${idDaProposta} não existe`);
+        if (proposta.confirmada) {
+          return { ok: false, motivo: "PROPOSTA_JA_CONFIRMADA" } as const;
+        }
+        const [{ vagas }] = await tx
+          .select({ vagas: pessoasAtivas })
+          .from(preReservas)
+          .where(
+            and(
+              eq(preReservas.pacote, pacote),
+              eq(preReservas.data, data),
+              gt(preReservas.expiraEm, agora),
+            ),
+          );
+        const vagasRestantes = saida.vagasTotais - vagas;
+        if (vagasDoGrupo(grupo) > vagasRestantes) {
+          return {
+            ok: false,
+            motivo: "VAGAS_INSUFICIENTES",
+            vagasRestantes,
+          } as const;
+        }
+        // A code taken by any other Pré-reserva, even one being made right
+        // now on another Saída, inserts nothing, so nothing is written.
+        const [inserida] = await tx
+          .insert(preReservas)
+          .values({ ...campos, ...grupo })
+          .onConflictDoNothing({ target: preReservas.codigo })
+          .returning({ codigo: preReservas.codigo });
+        if (!inserida) return { ok: false, motivo: "CODIGO_EM_USO" } as const;
+        await tx
+          .update(propostas)
+          .set({ confirmada: true })
+          .where(eq(propostas.id, idDaProposta));
+        return { ok: true } as const;
+      });
+    },
   };
 }
 
+/** People of the Pré-reservas summed: every person takes a Vaga, children included. */
+const pessoasAtivas = sql<number>`coalesce(sum(${preReservas.adultos} + cardinality(${preReservas.criancas})), 0)::int`;
+
 function paraProposta(row: typeof propostas.$inferSelect): Proposta {
-  const { id, pacote, data, adultos, criancas, total, criadaEm, expiraEm } =
-    row;
+  const {
+    id,
+    pacote,
+    data,
+    adultos,
+    criancas,
+    total,
+    criadaEm,
+    expiraEm,
+    confirmada,
+  } = row;
   return {
     id,
     pacote,
@@ -129,6 +214,7 @@ function paraProposta(row: typeof propostas.$inferSelect): Proposta {
     total,
     criadaEm,
     expiraEm,
+    confirmada,
   };
 }
 
@@ -156,7 +242,7 @@ function paraLinhaDePeriodo(
 
 /**
  * Replaces the whole catalog with `dados`, atomically, dropping every
- * Proposta. Used by the seed and the contract tests. Checked first with the
+ * Proposta and Pré-reserva. Used by the seed and the contract tests. Checked first with the
  * same rules as the in-memory Base, since no SQL constraint sees a Política's
  * faixas together.
  */
@@ -178,7 +264,8 @@ export async function substituirCatalogo(
   );
   await db.transaction(async (tx) => {
     // Children first, so foreign keys never point at a deleted row. Propostas
-    // point at Saídas, so a new catalog starts without any.
+    // and Pré-reservas point at Saídas, so a new catalog starts without any.
+    await tx.delete(preReservas);
     await tx.delete(propostas);
     await tx.delete(periodosTarifarios);
     await tx.delete(saidas);

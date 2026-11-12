@@ -49,6 +49,7 @@ describe("proporPreReserva", () => {
       total: proposta.cotacao.total,
       criadaEm: new Date("2026-12-01T12:00:00.000Z"),
       expiraEm: new Date("2026-12-01T12:15:00.000Z"),
+      confirmada: false,
     });
   });
 

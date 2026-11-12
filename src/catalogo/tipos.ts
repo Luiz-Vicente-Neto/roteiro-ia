@@ -105,4 +105,32 @@ export interface Proposta {
   total: number;
   criadaEm: Date;
   expiraEm: Date;
+  /** Set when a Pré-reserva is made from it: a Proposta is used only once. */
+  confirmada: boolean;
+}
+
+/**
+ * Pré-reserva: the Vagas of a Saída held for a Grupo, made only when a person
+ * confirms a Proposta (docs/adr/0003). It is active while `expiraEm` is after
+ * now, and holds no personal data: no name, e-mail or phone.
+ */
+export interface PreReserva {
+  /** Short and readable, `RT-XXXX`, for the person to quote. */
+  codigo: string;
+  /** Slug of the Pacote. */
+  pacote: string;
+  /** Date of the Saída, `YYYY-MM-DD`. */
+  data: string;
+  grupo: Grupo;
+  /** Total confirmed, in centavos. */
+  total: number;
+  criadaEm: Date;
+  expiraEm: Date;
+}
+
+/** Vagas held by active Pré-reservas on one Saída. */
+export interface VagasOcupadas {
+  pacote: string;
+  data: string;
+  vagas: number;
 }

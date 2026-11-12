@@ -4,8 +4,17 @@ import type {
   FaixaDeIdade,
   PeriodoTarifario,
   PoliticaDeCriancas,
+  PreReserva,
   Proposta,
+  VagasOcupadas,
 } from "./tipos";
+import { chaveDaSaida, vagasDoGrupo } from "./vagas";
+
+/** What a Base answers when it refuses to make a Pré-reserva. */
+export type RecusaDaPreReserva =
+  | { ok: false; motivo: "PROPOSTA_JA_CONFIRMADA" }
+  | { ok: false; motivo: "CODIGO_EM_USO" }
+  | { ok: false; motivo: "VAGAS_INSUFICIENTES"; vagasRestantes: number };
 
 /**
  * Base do Catálogo: everything the catalog module needs from storage, and
@@ -18,6 +27,20 @@ export interface BaseDoCatalogo {
   gravarProposta(proposta: Proposta): Promise<void>;
   /** The Proposta with `id`, or undefined if none was recorded. Expired ones too: expiry is the module's rule. */
   lerProposta(id: string): Promise<Proposta | undefined>;
+  /** Vagas held on each Saída by the Pré-reservas still active at `agora` (`expiraEm` after it). Saídas with none are left out. */
+  lerVagasOcupadas(agora: Date): Promise<VagasOcupadas[]>;
+  /**
+   * Atomically: checks that the Proposta `idDaProposta` (which must exist) is
+   * not confirmed yet, that `preReserva.codigo` is unused, and that the Grupo
+   * fits the Vagas of the Saída left by the Pré-reservas active at `agora`;
+   * then records the Pré-reserva and marks the Proposta confirmed. Either all
+   * of it happens or none does, even under concurrent calls.
+   */
+  criarPreReserva(pedido: {
+    idDaProposta: string;
+    preReserva: PreReserva;
+    agora: Date;
+  }): Promise<{ ok: true } | RecusaDaPreReserva>;
 }
 
 /** Code-point order: no locale rules, so every implementation sorts the same way. */
@@ -114,6 +137,9 @@ export function criarBaseEmMemoria(dados: DadosDoCatalogo): BaseDoCatalogo {
   // Copied on the way in and out, so no caller can change the stored catalog.
   const catalogo = ordenarCatalogo(structuredClone(dados));
   const propostas = new Map<string, Proposta>();
+  const preReservas = new Map<string, PreReserva>();
+  const ativas = (agora: Date) =>
+    [...preReservas.values()].filter((p) => p.expiraEm > agora);
   return {
     async lerCatalogo() {
       return structuredClone(catalogo);
@@ -124,6 +150,43 @@ export function criarBaseEmMemoria(dados: DadosDoCatalogo): BaseDoCatalogo {
     async lerProposta(id) {
       const proposta = propostas.get(id);
       return proposta && structuredClone(proposta);
+    },
+    async lerVagasOcupadas(agora) {
+      const porSaida = new Map<string, VagasOcupadas>();
+      for (const { pacote, data, grupo } of ativas(agora)) {
+        const chave = chaveDaSaida(pacote, data);
+        const ocupadas = porSaida.get(chave) ?? { pacote, data, vagas: 0 };
+        ocupadas.vagas += vagasDoGrupo(grupo);
+        porSaida.set(chave, ocupadas);
+      }
+      return [...porSaida.values()];
+    },
+    // Nothing is awaited in here, so no other call can run in between: that
+    // is what makes it atomic in memory.
+    async criarPreReserva({ idDaProposta, preReserva, agora }) {
+      const proposta = propostas.get(idDaProposta);
+      if (!proposta) throw new Error(`Proposta ${idDaProposta} não existe`);
+      if (proposta.confirmada) {
+        return { ok: false, motivo: "PROPOSTA_JA_CONFIRMADA" };
+      }
+      if (preReservas.has(preReserva.codigo)) {
+        return { ok: false, motivo: "CODIGO_EM_USO" };
+      }
+      const { pacote, data } = preReserva;
+      const saida = catalogo.saidas.find(
+        (s) => s.pacote === pacote && s.data === data,
+      );
+      if (!saida) throw new Error(`Saída ${pacote} ${data} não existe`);
+      const ocupadas = ativas(agora)
+        .filter((p) => p.pacote === pacote && p.data === data)
+        .reduce((soma, p) => soma + vagasDoGrupo(p.grupo), 0);
+      const vagasRestantes = saida.vagasTotais - ocupadas;
+      if (vagasDoGrupo(preReserva.grupo) > vagasRestantes) {
+        return { ok: false, motivo: "VAGAS_INSUFICIENTES", vagasRestantes };
+      }
+      preReservas.set(preReserva.codigo, structuredClone(preReserva));
+      proposta.confirmada = true;
+      return { ok: true };
     },
   };
 }

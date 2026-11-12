@@ -1,14 +1,8 @@
 // Regra de preço: pure domain logic, never SQL (docs/adr/0001).
 import type { Grupo } from "./entradas";
 import { IDADE_ADULTA } from "./grupo";
-import type {
-  DadosDoCatalogo,
-  FaixaDeIdade,
-  Pacote,
-  PeriodoTarifario,
-  Saida,
-} from "./tipos";
-import { vagasRestantes } from "./vagas";
+import type { FaixaDeIdade, Pacote, PeriodoTarifario, Saida } from "./tipos";
+import { type CatalogoVigente, vagasDoGrupo, vagasRestantes } from "./vagas";
 
 /**
  * `centavos × centesimos / 100`, rounded to whole reais (half up) and given
@@ -36,7 +30,7 @@ function faixaDaIdade(pacote: Pacote, idade: number): FaixaDeIdade {
 
 /** Builds the Cotação of `saida` for `grupo`. */
 export function cotar(
-  catalogo: DadosDoCatalogo,
+  catalogo: CatalogoVigente,
   pacote: Pacote,
   saida: Saida,
   grupo: Grupo,
@@ -105,8 +99,7 @@ export function cotar(
     periodosQuePerderam: cobrem.filter((p) => p !== periodo),
     precoPorPessoa,
     total: precoPorPessoa.reduce((soma, p) => soma + p.preco, 0),
-    // Every person takes a Vaga, children included, even at 0%.
-    vagasDoGrupo: precoPorPessoa.length,
-    vagasRestantes: vagasRestantes(saida),
+    vagasDoGrupo: vagasDoGrupo(grupo),
+    vagasRestantes: vagasRestantes(catalogo, saida),
   };
 }

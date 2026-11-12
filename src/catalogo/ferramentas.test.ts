@@ -14,6 +14,21 @@ function ferramenta(nome: string) {
 }
 
 describe("ferramentas", () => {
+  it("são exatamente as quatro que o modelo pode chamar, sem nenhuma forma de confirmar uma Pré-reserva", () => {
+    const nomes = catalogo.ferramentas.map((f) => f.nome);
+
+    expect(nomes.sort()).toEqual([
+      "buscar_pacotes",
+      "consultar_preco",
+      "propor_pre_reserva",
+      "verificar_disponibilidade",
+    ]);
+    for (const { nome, executar } of catalogo.ferramentas) {
+      expect(nome).not.toMatch(/confirm/i);
+      expect(executar).not.toBe(catalogo.confirmarPreReserva);
+    }
+  });
+
   it("expõe verificar_disponibilidade com descrição para o modelo e schema de entrada", () => {
     const verificar = ferramenta("verificar_disponibilidade");
 

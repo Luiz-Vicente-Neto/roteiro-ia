@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { BaseDoCatalogo } from "./base";
 import { semente } from "./semente";
-import type { DadosDoCatalogo, Proposta } from "./tipos";
+import type { DadosDoCatalogo, PreReserva, Proposta } from "./tipos";
 
 /** Builds a Base do Catálogo holding exactly `dados`, empty of anything else. */
 export type CriarBase = (dados: DadosDoCatalogo) => Promise<BaseDoCatalogo>;
@@ -259,6 +259,7 @@ export function testarContratoDaBase(nome: string, criarBase: CriarBase) {
         total: 448900,
         criadaEm: new Date("2026-12-01T12:00:00.123Z"),
         expiraEm: new Date("2026-12-01T12:15:00.123Z"),
+        confirmada: false,
       };
       const semCriancas: Proposta = {
         id: "b2".repeat(32),
@@ -268,6 +269,7 @@ export function testarContratoDaBase(nome: string, criarBase: CriarBase) {
         total: 564100,
         criadaEm: new Date("2026-12-31T23:59:59.999Z"),
         expiraEm: new Date("2027-01-01T00:14:59.999Z"),
+        confirmada: false,
       };
 
       await base.gravarProposta(comCriancas);
@@ -281,6 +283,166 @@ export function testarContratoDaBase(nome: string, criarBase: CriarBase) {
       const base = await criarBase(dados);
 
       expect(await base.lerProposta("c3".repeat(32))).toBeUndefined();
+    });
+
+    describe("Pré-reserva", () => {
+      // Jeri on 2027-12-31 has 4 Vagas.
+      const saida = {
+        pacote: "jericoacoara-vila-kalango-7n",
+        data: "2027-12-31",
+      };
+      const agora = new Date("2026-12-01T12:05:00.000Z");
+      let contador = 0;
+
+      async function comProposta(base: BaseDoCatalogo, adultos: number) {
+        contador++;
+        const proposta: Proposta = {
+          id: contador.toString(16).padStart(64, "0"),
+          ...saida,
+          grupo: { adultos, criancas: [] },
+          total: 100000,
+          criadaEm: new Date("2026-12-01T12:00:00.000Z"),
+          expiraEm: new Date("2026-12-01T12:15:00.000Z"),
+          confirmada: false,
+        };
+        await base.gravarProposta(proposta);
+        return proposta;
+      }
+
+      function preReservaDe(
+        proposta: Proposta,
+        codigo: string,
+        criadaEm = agora,
+      ): PreReserva {
+        return {
+          codigo,
+          pacote: proposta.pacote,
+          data: proposta.data,
+          grupo: proposta.grupo,
+          total: proposta.total,
+          criadaEm,
+          expiraEm: new Date(criadaEm.getTime() + 24 * 60 * 60 * 1000),
+        };
+      }
+
+      it("cria a Pré-reserva, que passa a ocupar as Vagas da Saída, e marca a Proposta confirmada", async () => {
+        const base = await criarBase(dados);
+        const proposta = await comProposta(base, 1);
+
+        const criada = await base.criarPreReserva({
+          idDaProposta: proposta.id,
+          preReserva: {
+            ...preReservaDe(proposta, "RT-AB23"),
+            grupo: { adultos: 1, criancas: [7, 0] },
+          },
+          agora,
+        });
+
+        expect(criada).toEqual({ ok: true });
+        expect(await base.lerVagasOcupadas(agora)).toEqual([
+          { ...saida, vagas: 3 },
+        ]);
+        expect(await base.lerProposta(proposta.id)).toEqual({
+          ...proposta,
+          confirmada: true,
+        });
+      });
+
+      it("recusa com VAGAS_INSUFICIENTES o Grupo que não cabe, sem gravar nada nem confirmar a Proposta", async () => {
+        const base = await criarBase(dados);
+        const primeira = await comProposta(base, 3);
+        const segunda = await comProposta(base, 2);
+        await base.criarPreReserva({
+          idDaProposta: primeira.id,
+          preReserva: preReservaDe(primeira, "RT-AAAA"),
+          agora,
+        });
+
+        const recusa = await base.criarPreReserva({
+          idDaProposta: segunda.id,
+          preReserva: preReservaDe(segunda, "RT-BBBB"),
+          agora,
+        });
+
+        expect(recusa).toEqual({
+          ok: false,
+          motivo: "VAGAS_INSUFICIENTES",
+          vagasRestantes: 1,
+        });
+        expect(await base.lerVagasOcupadas(agora)).toEqual([
+          { ...saida, vagas: 3 },
+        ]);
+        expect(await base.lerProposta(segunda.id)).toMatchObject({
+          confirmada: false,
+        });
+      });
+
+      it("recusa com PROPOSTA_JA_CONFIRMADA uma segunda Pré-reserva da mesma Proposta", async () => {
+        const base = await criarBase(dados);
+        const proposta = await comProposta(base, 1);
+        await base.criarPreReserva({
+          idDaProposta: proposta.id,
+          preReserva: preReservaDe(proposta, "RT-CCCC"),
+          agora,
+        });
+
+        expect(
+          await base.criarPreReserva({
+            idDaProposta: proposta.id,
+            preReserva: preReservaDe(proposta, "RT-DDDD"),
+            agora,
+          }),
+        ).toEqual({ ok: false, motivo: "PROPOSTA_JA_CONFIRMADA" });
+        expect(await base.lerVagasOcupadas(agora)).toEqual([
+          { ...saida, vagas: 1 },
+        ]);
+      });
+
+      it("recusa com CODIGO_EM_USO um código que já é de outra Pré-reserva, sem confirmar a Proposta", async () => {
+        const base = await criarBase(dados);
+        const primeira = await comProposta(base, 1);
+        const segunda = await comProposta(base, 1);
+        await base.criarPreReserva({
+          idDaProposta: primeira.id,
+          preReserva: preReservaDe(primeira, "RT-EEEE"),
+          agora,
+        });
+
+        expect(
+          await base.criarPreReserva({
+            idDaProposta: segunda.id,
+            preReserva: preReservaDe(segunda, "RT-EEEE"),
+            agora,
+          }),
+        ).toEqual({ ok: false, motivo: "CODIGO_EM_USO" });
+        expect(await base.lerProposta(segunda.id)).toMatchObject({
+          confirmada: false,
+        });
+      });
+
+      it("deixa de contar a Pré-reserva no instante em que expira, devolvendo as Vagas", async () => {
+        const base = await criarBase(dados);
+        const antiga = await comProposta(base, 4);
+        const nova = await comProposta(base, 4);
+        const criadaEm = new Date("2026-11-30T12:05:00.000Z");
+        await base.criarPreReserva({
+          idDaProposta: antiga.id,
+          preReserva: preReservaDe(antiga, "RT-FFFF", criadaEm),
+          agora: criadaEm,
+        });
+
+        expect(
+          await base.lerVagasOcupadas(new Date(agora.getTime() - 1)),
+        ).toEqual([{ ...saida, vagas: 4 }]);
+        expect(await base.lerVagasOcupadas(agora)).toEqual([]);
+        expect(
+          await base.criarPreReserva({
+            idDaProposta: nova.id,
+            preReserva: preReservaDe(nova, "RT-GGGG"),
+            agora,
+          }),
+        ).toEqual({ ok: true });
+      });
     });
 
     it("lê um catálogo vazio", async () => {

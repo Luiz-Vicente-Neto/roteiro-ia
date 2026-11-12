@@ -2,7 +2,8 @@
 import type { Grupo } from "./entradas";
 import { recusaDoGrupo } from "./grupo";
 import { cotar } from "./preco";
-import type { DadosDoCatalogo, Destino } from "./tipos";
+import type { Destino } from "./tipos";
+import type { CatalogoVigente } from "./vagas";
 
 const MAXIMO_DE_RESULTADOS = 10;
 
@@ -25,7 +26,7 @@ export interface CriteriosDaBusca {
  * filter, with the other passing dates, cheapest Pacote first. When none
  * passes, a diagnóstico counts why the Saídas in the janela fell out.
  */
-export function buscar(catalogo: DadosDoCatalogo, criterios: CriteriosDaBusca) {
+export function buscar(catalogo: CatalogoVigente, criterios: CriteriosDaBusca) {
   const { grupo, inicio, fim, orcamento } = criterios;
   const slugsDosDestinos = new Set(criterios.destinos.map((d) => d.slug));
   const slugsDosHoteis = new Set(

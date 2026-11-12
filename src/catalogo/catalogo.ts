@@ -13,16 +13,23 @@ import {
 import { falha } from "./erros";
 import { criarFerramentas } from "./ferramentas";
 import { recusaDoGrupo } from "./grupo";
+import { gerarCodigoDaPreReserva } from "./pre-reserva";
 import { cotar } from "./preco";
 import { gerarIdDaProposta } from "./proposta";
 import type { Relogio } from "./relogio";
-import type { DadosDoCatalogo } from "./tipos";
-import { vagasRestantes } from "./vagas";
+import type { DadosDoCatalogo, PreReserva } from "./tipos";
+import { type CatalogoVigente, ocupacao, vagasRestantes } from "./vagas";
 
 const SUGESTOES_DE_SAIDA = 3;
 
 /** A Proposta can be confirmed for 15 minutes after it is made. */
 const VALIDADE_DA_PROPOSTA_MS = 15 * 60 * 1000;
+
+/** A Pré-reserva holds its Vagas for 24 hours after it is made. */
+const VALIDADE_DA_PRE_RESERVA_MS = 24 * 60 * 60 * 1000;
+
+/** A collision among 32⁴ codes is rare; this many in a row means a bug. */
+const TENTATIVAS_DE_CODIGO = 5;
 
 /** ISO dates closest to `alvo` (ties go to the earlier one), returned in date order. */
 function datasMaisProximas(datas: string[], alvo: string): string[] {
@@ -75,6 +82,20 @@ function encontrarSaida(
   return { ok: true as const, pacote, saida };
 }
 
+function jaConfirmada() {
+  return falha(
+    "PROPOSTA_JA_CONFIRMADA",
+    "Esta Proposta já foi confirmada: cada Proposta vale para uma única Pré-reserva.",
+  );
+}
+
+function semVagas(restantes: number, doGrupo: number) {
+  return falha(
+    "VAGAS_INSUFICIENTES",
+    `As Vagas acabaram desde a Proposta: a Saída tem ${restantes} Vagas restantes, e o Grupo tem ${doGrupo} pessoas. Peça outra Saída na conversa.`,
+  );
+}
+
 export function criarCatalogo({
   base,
   relogio,
@@ -82,6 +103,15 @@ export function criarCatalogo({
   base: BaseDoCatalogo;
   relogio: Relogio;
 }) {
+  /** The catalog with the Vagas held by the Pré-reservas active right now. */
+  async function lerCatalogoVigente(): Promise<CatalogoVigente> {
+    const [dados, ocupadas] = await Promise.all([
+      base.lerCatalogo(),
+      base.lerVagasOcupadas(relogio.agora()),
+    ]);
+    return { ...dados, ocupacao: ocupacao(ocupadas) };
+  }
+
   /**
    * Validates and quotes like consultar_preco, also handing back the catalog
    * it read. Every operation that quotes goes through it, so they all fail
@@ -91,7 +121,7 @@ export function criarCatalogo({
     const validacao = validar(entradaConsultarPreco, bruta);
     if (!validacao.ok) return validacao;
     const entrada = validacao.valor;
-    const catalogo = await base.lerCatalogo();
+    const catalogo = await lerCatalogoVigente();
     const encontrada = encontrarSaida(catalogo, entrada, relogio.hoje());
     if (!encontrada.ok) return encontrada;
     const recusa = recusaDoGrupo(encontrada.pacote, entrada.grupo);
@@ -110,7 +140,7 @@ export function criarCatalogo({
       const validacao = validar(entradaBuscarPacotes, bruta);
       if (!validacao.ok) return validacao;
       const { grupo, destino, janela, orcamento } = validacao.valor;
-      const catalogo = await base.lerCatalogo();
+      const catalogo = await lerCatalogoVigente();
       const destinos = destinosDaBusca(catalogo.destinos, destino);
       if (destinos.length === 0) {
         const existentes = catalogo.destinos.map((d) => d.nome);
@@ -135,8 +165,9 @@ export function criarCatalogo({
     async verificarDisponibilidade(bruta: EntradaVerificarDisponibilidade) {
       const validacao = validar(entradaVerificarDisponibilidade, bruta);
       if (!validacao.ok) return validacao;
+      const catalogo = await lerCatalogoVigente();
       const encontrada = encontrarSaida(
-        await base.lerCatalogo(),
+        catalogo,
         validacao.valor,
         relogio.hoje(),
       );
@@ -147,7 +178,7 @@ export function criarCatalogo({
         pacote: saida.pacote,
         data: saida.data,
         vagasTotais: saida.vagasTotais,
-        vagasRestantes: vagasRestantes(saida),
+        vagasRestantes: vagasRestantes(catalogo, saida),
       };
     },
 
@@ -170,7 +201,7 @@ export function criarCatalogo({
               s.pacote === cotacao.pacote.slug &&
               s.data >= hoje &&
               s.data !== cotacao.data &&
-              vagasRestantes(s) >= vagasDoGrupo,
+              vagasRestantes(cotada.catalogo, s) >= vagasDoGrupo,
           )
           .map((s) => s.data);
         const sugestoes = datasMaisProximas(queCabem, cotacao.data);
@@ -192,6 +223,7 @@ export function criarCatalogo({
         total: cotacao.total,
         criadaEm,
         expiraEm: new Date(criadaEm.getTime() + VALIDADE_DA_PROPOSTA_MS),
+        confirmada: false,
       };
       await base.gravarProposta(proposta);
       return {
@@ -202,5 +234,80 @@ export function criarCatalogo({
       };
     },
   };
-  return { ...operacoes, ferramentas: criarFerramentas(operacoes) };
+
+  /**
+   * Confirms the Proposta `idDaProposta`, making a Pré-reserva that holds its
+   * Vagas. Only the human path calls it (the chat's button, the MCP
+   * confirmation request): it is never one of the ferramentas, so the model
+   * cannot reserve (docs/adr/0003). Everything is checked again now.
+   */
+  async function confirmarPreReserva(idDaProposta: string) {
+    const proposta = await base.lerProposta(idDaProposta);
+    if (!proposta) {
+      return falha(
+        "PROPOSTA_INEXISTENTE",
+        "Esta Proposta não existe. Peça uma nova Proposta na conversa.",
+      );
+    }
+    const agora = relogio.agora();
+    if (proposta.expiraEm <= agora) {
+      return falha(
+        "PROPOSTA_EXPIRADA",
+        "Esta Proposta expirou: ela vale 15 minutos. Peça uma nova Proposta na conversa.",
+      );
+    }
+    if (proposta.confirmada) return jaConfirmada();
+    const { pacote, data, grupo } = proposta;
+    const cotada = await cotarEntrada({ pacote, data, grupo });
+    if (!cotada.ok) return cotada;
+    const { cotacao } = cotada;
+    if (cotacao.total !== proposta.total) {
+      return falha(
+        "PRECO_ALTERADO",
+        `O preço mudou desde a Proposta: era ${proposta.total} centavos e agora é ${cotacao.total}. Peça uma nova Proposta na conversa.`,
+      );
+    }
+    if (cotacao.vagasDoGrupo > cotacao.vagasRestantes) {
+      return semVagas(cotacao.vagasRestantes, cotacao.vagasDoGrupo);
+    }
+    for (let tentativa = 0; tentativa < TENTATIVAS_DE_CODIGO; tentativa++) {
+      const preReserva: PreReserva = {
+        codigo: gerarCodigoDaPreReserva(),
+        pacote,
+        data,
+        grupo,
+        total: proposta.total,
+        criadaEm: agora,
+        expiraEm: new Date(agora.getTime() + VALIDADE_DA_PRE_RESERVA_MS),
+      };
+      const criada = await base.criarPreReserva({
+        idDaProposta,
+        preReserva,
+        agora,
+      });
+      if (criada.ok) {
+        return {
+          ok: true as const,
+          preReserva: {
+            ...preReserva,
+            criadaEm: preReserva.criadaEm.toISOString(),
+            expiraEm: preReserva.expiraEm.toISOString(),
+          },
+        };
+      }
+      if (criada.motivo === "PROPOSTA_JA_CONFIRMADA") return jaConfirmada();
+      if (criada.motivo === "VAGAS_INSUFICIENTES") {
+        return semVagas(criada.vagasRestantes, cotacao.vagasDoGrupo);
+      }
+    }
+    throw new Error(
+      `Nenhum código de Pré-reserva livre em ${TENTATIVAS_DE_CODIGO} tentativas`,
+    );
+  }
+
+  return {
+    ...operacoes,
+    confirmarPreReserva,
+    ferramentas: criarFerramentas(operacoes),
+  };
 }

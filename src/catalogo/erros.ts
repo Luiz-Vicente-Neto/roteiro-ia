@@ -10,7 +10,11 @@ export type CodigoDeErro =
   | "SAIDA_INEXISTENTE"
   | "SAIDA_ENCERRADA"
   | "GRUPO_NAO_ACEITO"
-  | "VAGAS_INSUFICIENTES";
+  | "VAGAS_INSUFICIENTES"
+  | "PROPOSTA_INEXISTENTE"
+  | "PROPOSTA_EXPIRADA"
+  | "PROPOSTA_JA_CONFIRMADA"
+  | "PRECO_ALTERADO";
 
 export interface Falha<C extends CodigoDeErro = CodigoDeErro> {
   ok: false;
