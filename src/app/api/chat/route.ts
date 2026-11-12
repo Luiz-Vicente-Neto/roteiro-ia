@@ -1,6 +1,7 @@
 import { createUIMessageStreamResponse } from "ai";
 import { z } from "zod";
 import { donoDaVisita, obterAssistente } from "@/app/servidor";
+import { CONVERSA_CHEIA } from "@/assistente";
 
 // Thin layer: wiring only, no rules.
 
@@ -24,6 +25,10 @@ export async function POST(request: Request) {
   }
 
   const envio = await obterAssistente().enviarMensagem({ dono, ...corpo.data });
+  if (!envio.ok && envio.erro === CONVERSA_CHEIA) {
+    // The browser shows "comece uma nova Conversa" for this erro.
+    return Response.json({ erro: envio.erro }, { status: 409 });
+  }
   if (!envio.ok) {
     return Response.json({ erro: "Conversa não encontrada." }, { status: 404 });
   }

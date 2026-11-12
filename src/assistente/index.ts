@@ -1,6 +1,8 @@
 // Public interface of the assistente module. Framework-free: nothing from Next or Drizzle.
 export {
   type Assistente,
+  type ConversaCheia,
+  type ConversaDaLista,
   type ConversaNaoExiste,
   criarAssistente,
   mensagensDe,
@@ -12,7 +14,11 @@ export {
   type Evento,
   type ItemDaConversa,
 } from "./base";
-export { ASSISTENTE_INDISPONIVEL } from "./mensagens";
+export {
+  ASSISTENTE_INDISPONIVEL,
+  COMECE_UMA_NOVA_CONVERSA,
+  CONVERSA_CHEIA,
+} from "./mensagens";
 export { resolverModelo } from "./modelo";
 export {
   type Chamada,

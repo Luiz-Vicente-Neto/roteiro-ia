@@ -9,6 +9,7 @@ import { criarBaseEmMemoria, criarCatalogo, relogioFixo } from "../catalogo";
 import { catalogoDeTeste } from "../catalogo/catalogo-de-teste";
 import {
   ASSISTENTE_INDISPONIVEL,
+  COMECE_UMA_NOVA_CONVERSA,
   cardsDaResposta,
   chamadasDaResposta,
   chaveDoCard,
@@ -612,5 +613,148 @@ describe("Conversa salva", () => {
     expect(
       await assistente.enviarMensagem({ dono, conversa, texto: "Oi" }),
     ).toEqual({ ok: false, erro: "CONVERSA_NAO_EXISTE" });
+  });
+});
+
+/** A clock the test moves forward, starting at `inicio`. */
+function relogioQueAnda(inicio: string) {
+  let agora = new Date(inicio);
+  return {
+    relogio: {
+      agora: () => new Date(agora),
+      hoje: () => relogioFixo(agora).hoje(),
+    },
+    avancarDias(dias: number) {
+      agora = new Date(agora.getTime() + dias * 24 * 60 * 60 * 1000);
+    },
+  };
+}
+
+describe("lista de Conversas", () => {
+  /** An Assistente that answers every message with "Olá!". */
+  function assistenteQueAnda(inicio = "2026-12-01T09:00:00-03:00") {
+    const tempo = relogioQueAnda(inicio);
+    const modelo = new MockLanguageModelV4({
+      doStream: async () => passoDeTexto("Olá!"),
+    });
+    const assistente = criarAssistente({
+      modelo,
+      catalogo,
+      conversas: criarBaseDeConversasEmMemoria(),
+      relogio: tempo.relogio,
+    });
+    async function enviarEm(texto: string, conversa?: string, quem = dono) {
+      const envio = await assistente.enviarMensagem({
+        dono: quem,
+        conversa,
+        texto,
+      });
+      if (!envio.ok) throw new Error(envio.erro);
+      await convertReadableStreamToArray(envio.stream);
+      return envio.conversa;
+    }
+    return { assistente, modelo, tempo, enviarEm };
+  }
+
+  it("traz só as Conversas do dono, da última atividade mais recente para a mais antiga", async () => {
+    const { assistente, tempo, enviarEm } = assistenteQueAnda();
+    const gramado = await enviarEm("Gramado em julho");
+    tempo.avancarDias(1);
+    const bonito = await enviarEm("Bonito com crianças");
+    tempo.avancarDias(1);
+    await enviarEm("Foz do Iguaçu", undefined, "outro-dono");
+    tempo.avancarDias(1);
+    await enviarEm("E em agosto?", gramado);
+
+    const lista = await assistente.listarConversas({ dono });
+
+    expect(lista).toEqual([
+      {
+        id: gramado,
+        titulo: "Gramado em julho",
+        ultimaAtividade: new Date("2026-12-04T12:00:00.000Z"),
+      },
+      {
+        id: bonito,
+        titulo: "Bonito com crianças",
+        ultimaAtividade: new Date("2026-12-02T12:00:00.000Z"),
+      },
+    ]);
+  });
+
+  it("intitula a Conversa com as primeiras palavras da primeira mensagem do Viajante, sem chamar o modelo para isso", async () => {
+    const { assistente, modelo, enviarEm } = assistenteQueAnda();
+    const conversa = await enviarEm(
+      "  Quero 4 dias   em Gramado\nem julho, casal, até R$ 4 mil",
+    );
+    await enviarEm("Na verdade, prefiro Bonito", conversa);
+
+    const [titulada] = await assistente.listarConversas({ dono });
+
+    expect(titulada?.titulo).toBe("Quero 4 dias em Gramado em…");
+    expect(modelo.doStreamCalls).toHaveLength(2);
+  });
+
+  it("apagar tira a Conversa da lista e ela não abre mais; outro dono não consegue apagar", async () => {
+    const { assistente, enviarEm } = assistenteQueAnda();
+    const apagada = await enviarEm("Gramado em julho");
+    const mantida = await enviarEm("Bonito com crianças");
+
+    await assistente.apagarConversa({ dono: "outro-dono", conversa: mantida });
+    await assistente.apagarConversa({ dono, conversa: apagada });
+
+    const lista = await assistente.listarConversas({ dono });
+    expect(lista.map((c) => c.id)).toEqual([mantida]);
+    expect(
+      await assistente.abrirConversa({ dono, conversa: apagada }),
+    ).toBeUndefined();
+    expect(
+      await assistente.abrirConversa({ dono, conversa: mantida }),
+    ).toHaveLength(2);
+  });
+
+  it("na 41ª mensagem, a resposta é comece uma nova Conversa, e o modelo não é chamado", async () => {
+    const { assistente, modelo, enviarEm } = assistenteQueAnda();
+    const conversa = await enviarEm("Mensagem 1");
+    // Each send keeps two messages: the Viajante's and the Assistente's.
+    for (let i = 2; i <= 20; i++) await enviarEm(`Mensagem ${i}`, conversa);
+    expect(await assistente.abrirConversa({ dono, conversa })).toHaveLength(40);
+
+    const envio = await assistente.enviarMensagem({
+      dono,
+      conversa,
+      texto: "Mais uma",
+    });
+
+    expect(envio).toEqual({ ok: false, erro: "CONVERSA_CHEIA" });
+    expect(COMECE_UMA_NOVA_CONVERSA).toMatch(/comece uma nova Conversa/i);
+    expect(modelo.doStreamCalls).toHaveLength(20);
+    expect(await assistente.abrirConversa({ dono, conversa })).toHaveLength(40);
+  });
+
+  it("avançando o Relógio para mais de 90 dias, criar uma Conversa nova apaga as paradas, mas não as recentes", async () => {
+    const { assistente, tempo, enviarEm } = assistenteQueAnda();
+    const parada = await enviarEm("Gramado em julho");
+    await enviarEm("Foz", undefined, "outro-dono");
+    tempo.avancarDias(60);
+    const recente = await enviarEm("Bonito com crianças");
+    tempo.avancarDias(30);
+    // 90 days exactly is not more than 90: nothing is deleted yet.
+    await enviarEm("Campos do Jordão");
+    expect(await assistente.listarConversas({ dono })).toHaveLength(3);
+    tempo.avancarDias(1);
+
+    const nova = await enviarEm("Gramado de novo");
+
+    const lista = await assistente.listarConversas({ dono });
+    expect(lista.map((c) => c.id)).not.toContain(parada);
+    expect(lista.map((c) => c.id)).toContain(recente);
+    expect(lista.map((c) => c.id)).toContain(nova);
+    expect(
+      await assistente.abrirConversa({ dono, conversa: parada }),
+    ).toBeUndefined();
+    expect(await assistente.listarConversas({ dono: "outro-dono" })).toEqual(
+      [],
+    );
   });
 });

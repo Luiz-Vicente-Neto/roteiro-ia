@@ -2,7 +2,7 @@
 // adapter: a Conversa's row already has the domain's shape, and item rows are
 // translated to ItemDaConversa on the way out.
 import type { UIMessage } from "ai";
-import { asc, eq } from "drizzle-orm";
+import { asc, desc, eq, lt } from "drizzle-orm";
 import type { BaseDeConversas, Evento, ItemDaConversa } from "../assistente";
 import type { Db } from "./client";
 import { conversas, itensDeConversa } from "./schema";
@@ -56,6 +56,23 @@ export function criarBaseDeConversasPostgres(db: Db): BaseDeConversas {
               },
         );
       });
+    },
+
+    async listarConversas(dono) {
+      return db
+        .select()
+        .from(conversas)
+        .where(eq(conversas.dono, dono))
+        .orderBy(desc(conversas.ultimaAtividade));
+    },
+
+    async apagarConversa(id) {
+      // The items go with it, by the foreign key's cascade.
+      await db.delete(conversas).where(eq(conversas.id, id));
+    },
+
+    async apagarConversasParadasAntesDe(limite) {
+      await db.delete(conversas).where(lt(conversas.ultimaAtividade, limite));
     },
   };
 }

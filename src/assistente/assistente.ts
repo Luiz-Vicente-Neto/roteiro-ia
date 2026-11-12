@@ -12,9 +12,13 @@ import {
 } from "ai";
 import { z } from "zod";
 import type { Ferramenta, Relogio } from "../catalogo";
-import type { BaseDeConversas, ItemDaConversa } from "./base";
+import type { BaseDeConversas, Conversa, ItemDaConversa } from "./base";
 import { instrucoes } from "./instrucoes";
-import { ASSISTENTE_INDISPONIVEL, FERRAMENTA_FALHOU } from "./mensagens";
+import {
+  ASSISTENTE_INDISPONIVEL,
+  CONVERSA_CHEIA,
+  FERRAMENTA_FALHOU,
+} from "./mensagens";
 
 /**
  * At most this many tool steps per answer, so a confused model cannot burn
@@ -45,8 +49,38 @@ function paraToolsDoSdk(
   );
 }
 
+/** How many words of the Viajante's first message make the Conversa's title. */
+const PALAVRAS_DO_TITULO = 6;
+
+/** The first words of `texto`, with "…" when there is more. No model call. */
+function tituloDe(texto: string): string {
+  const palavras = texto.trim().split(/\s+/);
+  const titulo = palavras.slice(0, PALAVRAS_DO_TITULO).join(" ");
+  return palavras.length > PALAVRAS_DO_TITULO ? `${titulo}…` : titulo;
+}
+
+/**
+ * At most this many messages per Conversa, the Viajante's and the
+ * Assistente's together, since its whole history goes to the model. Above
+ * that, the Viajante starts a new Conversa.
+ */
+const TETO_DE_MENSAGENS = 40;
+
+/** A Conversa with no activity for longer than this is deleted, lazily. */
+const DIAS_ATE_APAGAR_PARADA = 90;
+const UM_DIA_EM_MS = 24 * 60 * 60 * 1000;
+
 /** What enviarMensagem answers for a Conversa the dono cannot see. */
 export type ConversaNaoExiste = { ok: false; erro: "CONVERSA_NAO_EXISTE" };
+
+/** What enviarMensagem answers once the Conversa has TETO_DE_MENSAGENS. */
+export type ConversaCheia = { ok: false; erro: typeof CONVERSA_CHEIA };
+
+/** One Conversa as the sidebar lists it. */
+export type ConversaDaLista = Pick<
+  Conversa,
+  "id" | "titulo" | "ultimaAtividade"
+>;
 
 /** The messages of a Conversa's items. Eventos join them in the Proposta's ticket. */
 export function mensagensDe(itens: ItemDaConversa[]): UIMessage[] {
@@ -93,16 +127,21 @@ export function criarAssistente({
     }): Promise<
       | { ok: true; conversa: string; stream: ReadableStream<UIMessageChunk> }
       | ConversaNaoExiste
+      | ConversaCheia
     > {
       let historico: UIMessage[] = [];
       let id: string;
       if (idDaConversa === undefined) {
         id = crypto.randomUUID();
         const agora = relogio.agora();
+        // No scheduled job: each new Conversa clears the idle ones, of every dono.
+        await conversas.apagarConversasParadasAntesDe(
+          new Date(agora.getTime() - DIAS_ATE_APAGAR_PARADA * UM_DIA_EM_MS),
+        );
         await conversas.criarConversa({
           id,
           dono,
-          titulo: "",
+          titulo: tituloDe(texto),
           criadaEm: agora,
           ultimaAtividade: agora,
         });
@@ -112,6 +151,10 @@ export function criarAssistente({
         }
         id = idDaConversa;
         historico = mensagensDe(await conversas.lerItens(id));
+        // Refused before anything is recorded or the model is called.
+        if (historico.length >= TETO_DE_MENSAGENS) {
+          return { ok: false, erro: CONVERSA_CHEIA };
+        }
       }
 
       const doViajante: UIMessage = {
@@ -190,6 +233,32 @@ export function criarAssistente({
     }): Promise<ItemDaConversa[] | undefined> {
       if (!(await conversaDo(dono, conversa))) return undefined;
       return conversas.lerItens(conversa);
+    },
+
+    /** Deletes the Conversa and its items. For anyone but its dono, it does not exist, so nothing happens. */
+    async apagarConversa({
+      dono,
+      conversa,
+    }: {
+      dono: string;
+      conversa: string;
+    }): Promise<void> {
+      if (!(await conversaDo(dono, conversa))) return;
+      await conversas.apagarConversa(conversa);
+    },
+
+    /** The Conversas of `dono` for the sidebar, the most recent first. */
+    async listarConversas({
+      dono,
+    }: {
+      dono: string;
+    }): Promise<ConversaDaLista[]> {
+      const lista = await conversas.listarConversas(dono);
+      return lista.map(({ id, titulo, ultimaAtividade }) => ({
+        id,
+        titulo,
+        ultimaAtividade,
+      }));
     },
   };
 }

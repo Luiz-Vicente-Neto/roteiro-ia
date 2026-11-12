@@ -42,6 +42,12 @@ export interface BaseDeConversas {
   lerItens(id: string): Promise<ItemDaConversa[]>;
   /** Appends `item` to the Conversa `id` (which must exist) and sets its última atividade to `agora`. */
   adicionarItem(id: string, item: ItemDaConversa, agora: Date): Promise<void>;
+  /** The Conversas of `dono`, from the most recent última atividade to the oldest. */
+  listarConversas(dono: string): Promise<Conversa[]>;
+  /** Deletes the Conversa `id` and its items, if it exists. Propostas and Pré-reservas live elsewhere. */
+  apagarConversa(id: string): Promise<void>;
+  /** Deletes, with their items, the Conversas of every dono whose última atividade is before `limite`. */
+  apagarConversasParadasAntesDe(limite: Date): Promise<void>;
 }
 
 export function criarBaseDeConversasEmMemoria(): BaseDeConversas {
@@ -73,6 +79,23 @@ export function criarBaseDeConversasEmMemoria(): BaseDeConversas {
       const { conversa, itens } = existente(id);
       itens.push(structuredClone(item));
       conversa.ultimaAtividade = new Date(agora);
+    },
+    async listarConversas(dono) {
+      return [...conversas.values()]
+        .map(({ conversa }) => conversa)
+        .filter((c) => c.dono === dono)
+        .sort(
+          (a, b) => b.ultimaAtividade.getTime() - a.ultimaAtividade.getTime(),
+        )
+        .map((c) => structuredClone(c));
+    },
+    async apagarConversa(id) {
+      conversas.delete(id);
+    },
+    async apagarConversasParadasAntesDe(limite) {
+      for (const [id, { conversa }] of conversas) {
+        if (conversa.ultimaAtividade < limite) conversas.delete(id);
+      }
     },
   };
 }

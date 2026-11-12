@@ -2,8 +2,13 @@
 
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, isToolUIPart, type UIMessage } from "ai";
+import { useRouter } from "next/navigation";
 import { type FormEvent, useEffect, useRef, useState } from "react";
-import { ASSISTENTE_INDISPONIVEL } from "@/assistente/mensagens";
+import {
+  ASSISTENTE_INDISPONIVEL,
+  COMECE_UMA_NOVA_CONVERSA,
+  CONVERSA_CHEIA,
+} from "@/assistente/mensagens";
 import { cardsDaResposta, chamadasDaResposta } from "@/assistente/resposta";
 import { CardsDeCotacao, PainelDeChamadas } from "./resposta";
 
@@ -39,10 +44,27 @@ export function Conversa({
   const [texto, setTexto] = useState("");
   const idDaConversa = useRef(conversa);
   const [transport] = useState(() => transporte(idDaConversa));
-  const { messages, sendMessage, status, error } = useChat({
+  const router = useRouter();
+  const { messages, setMessages, sendMessage, status, error } = useChat({
     messages: mensagens,
     transport,
+    // So the sidebar shows this Conversa, with its new última atividade.
+    onFinish: ({ isError, isAbort }) => {
+      if (!isError && !isAbort) router.refresh();
+    },
   });
+  // The route answers 409 with this erro; the transport puts the body in the message.
+  const cheia = error?.message.includes(CONVERSA_CHEIA) ?? false;
+
+  useEffect(() => {
+    if (!cheia) return;
+    // The refused message was not kept: it leaves the list and goes back to
+    // the input, so the Viajante can copy it into a new Conversa.
+    setMessages((atuais) => {
+      setTexto(textoDe(atuais.at(-1)));
+      return atuais.slice(0, -1);
+    });
+  }, [cheia, setMessages]);
 
   useEffect(() => {
     if (idDaConversa.current) return;
@@ -57,7 +79,7 @@ export function Conversa({
   function enviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     const mensagem = texto.trim();
-    if (!mensagem || ocupado) return;
+    if (!mensagem || ocupado || cheia) return;
     sendMessage({ text: mensagem });
     setTexto("");
   }
@@ -84,14 +106,26 @@ export function Conversa({
         )}
       </ol>
 
-      {error && (
+      {cheia ? (
         <p
           role="alert"
-          className="rounded-lg bg-amber-50 px-4 py-2 text-amber-900"
+          className="rounded-lg bg-teal-50 px-4 py-2 text-teal-900"
         >
-          {/* Never the technical detail, even for a failure outside the stream. */}
-          {ASSISTENTE_INDISPONIVEL}
+          {COMECE_UMA_NOVA_CONVERSA}{" "}
+          <a href="/" className="font-medium underline">
+            Nova Conversa
+          </a>
         </p>
+      ) : (
+        error && (
+          <p
+            role="alert"
+            className="rounded-lg bg-amber-50 px-4 py-2 text-amber-900"
+          >
+            {/* Never the technical detail, even for a failure outside the stream. */}
+            {ASSISTENTE_INDISPONIVEL}
+          </p>
+        )
       )}
 
       <form onSubmit={enviar} className="flex gap-2">
@@ -108,7 +142,7 @@ export function Conversa({
         />
         <button
           type="submit"
-          disabled={ocupado || !texto.trim()}
+          disabled={ocupado || cheia || !texto.trim()}
           className="rounded-full bg-teal-700 px-5 py-2 font-medium text-white disabled:opacity-50"
         >
           Enviar

@@ -130,6 +130,90 @@ export function testarContratoDaBaseDeConversas(
       expect(await base.lerItens(outra.id)).toEqual([doAssistente]);
     });
 
+    it("lista só as Conversas do dono, da última atividade mais recente para a mais antiga", async () => {
+      const base = await criarBase();
+      const dono = crypto.randomUUID();
+      const antiga = novaConversa({
+        dono,
+        titulo: "Gramado em julho",
+        ultimaAtividade: new Date("2026-12-01T10:00:00.000Z"),
+      });
+      const recente = novaConversa({
+        dono,
+        titulo: "Bonito com crianças",
+        ultimaAtividade: new Date("2026-12-03T10:00:00.000Z"),
+      });
+      const doMeio = novaConversa({
+        dono,
+        ultimaAtividade: new Date("2026-12-02T10:00:00.000Z"),
+      });
+      await base.criarConversa(antiga);
+      await base.criarConversa(recente);
+      await base.criarConversa(doMeio);
+      await base.criarConversa(novaConversa());
+
+      expect(await base.listarConversas(dono)).toEqual([
+        recente,
+        doMeio,
+        antiga,
+      ]);
+    });
+
+    it("apagar uma Conversa apaga ela e os itens dela, e mais nenhuma", async () => {
+      const base = await criarBase();
+      const apagada = novaConversa();
+      const outra = novaConversa({ dono: apagada.dono });
+      await base.criarConversa(apagada);
+      await base.criarConversa(outra);
+      const agora = new Date("2026-12-01T12:06:00.000Z");
+      await base.adicionarItem(apagada.id, doViajante, agora);
+      await base.adicionarItem(outra.id, doAssistente, agora);
+
+      await base.apagarConversa(apagada.id);
+
+      expect(await base.lerConversa(apagada.id)).toBeUndefined();
+      expect(await base.lerItens(apagada.id)).toEqual([]);
+      expect(await base.listarConversas(apagada.dono)).toEqual([
+        { ...outra, ultimaAtividade: agora },
+      ]);
+      expect(await base.lerItens(outra.id)).toEqual([doAssistente]);
+    });
+
+    it("apagar um id de Conversa que não existe não faz nada", async () => {
+      const base = await criarBase();
+
+      await expect(
+        base.apagarConversa(crypto.randomUUID()),
+      ).resolves.toBeUndefined();
+    });
+
+    it("apaga, com os itens, as Conversas de qualquer dono paradas desde antes do limite, e não as outras", async () => {
+      const base = await criarBase();
+      // Far in the past, so no other case's Conversa in a shared Base is touched.
+      const limite = new Date("2001-01-01T00:00:00.000Z");
+      const parada = novaConversa({
+        ultimaAtividade: new Date("2000-12-31T23:59:59.999Z"),
+      });
+      const deOutroDono = novaConversa({
+        ultimaAtividade: new Date("2000-06-01T00:00:00.000Z"),
+      });
+      const noLimite = novaConversa({ ultimaAtividade: limite });
+      const recente = novaConversa({ dono: parada.dono });
+      await base.criarConversa(parada);
+      await base.criarConversa(deOutroDono);
+      await base.criarConversa(noLimite);
+      await base.criarConversa(recente);
+      await base.adicionarItem(parada.id, doViajante, parada.ultimaAtividade);
+
+      await base.apagarConversasParadasAntesDe(limite);
+
+      expect(await base.lerConversa(parada.id)).toBeUndefined();
+      expect(await base.lerItens(parada.id)).toEqual([]);
+      expect(await base.lerConversa(deOutroDono.id)).toBeUndefined();
+      expect(await base.lerConversa(noLimite.id)).toEqual(noLimite);
+      expect(await base.listarConversas(parada.dono)).toEqual([recente]);
+    });
+
     it("não deixa quem lê mudar o que ficou gravado", async () => {
       const base = await criarBase();
       const conversa = novaConversa();
