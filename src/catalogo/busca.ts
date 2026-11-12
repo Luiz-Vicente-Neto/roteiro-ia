@@ -1,14 +1,11 @@
 // Busca de Pacotes: pure domain logic over the whole catalog (docs/adr/0001).
 import type { Grupo } from "./entradas";
 import { recusaDoGrupo } from "./grupo";
-import { cotar } from "./preco";
+import { type Cotacao, cotar } from "./preco";
 import type { Destino } from "./tipos";
 import type { CatalogoVigente } from "./vagas";
 
 const MAXIMO_DE_RESULTADOS = 10;
-
-/** A Cotação without the `ok` flag, as each item of a search result. */
-type Cotacao = Omit<ReturnType<typeof cotar>, "ok">;
 
 export interface CriteriosDaBusca {
   grupo: Grupo;

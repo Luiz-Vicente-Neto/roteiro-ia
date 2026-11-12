@@ -1,8 +1,11 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
+import { isToolUIPart, type UIMessage } from "ai";
 import { type FormEvent, useState } from "react";
 import { ASSISTENTE_INDISPONIVEL } from "@/assistente/mensagens";
+import { cardsDaResposta, chamadasDaResposta } from "@/assistente/resposta";
+import { CardsDeCotacao, PainelDeChamadas } from "./resposta";
 
 export function Conversa() {
   const [texto, setTexto] = useState("");
@@ -20,38 +23,18 @@ export function Conversa() {
   return (
     <div className="flex flex-1 flex-col gap-4">
       <ol className="flex flex-1 flex-col gap-3">
-        {messages.map((mensagem) => {
-          const doViajante = mensagem.role === "user";
-          const consultando = mensagem.parts.some(
-            (p) =>
-              p.type.startsWith("tool-") &&
-              "state" in p &&
-              p.state !== "output-available" &&
-              p.state !== "output-error",
-          );
-          return (
+        {messages.map((mensagem) =>
+          mensagem.role === "user" ? (
             <li
               key={mensagem.id}
-              className={`max-w-[85%] whitespace-pre-wrap rounded-2xl px-4 py-2 ${
-                doViajante
-                  ? "self-end bg-teal-700 text-white"
-                  : "self-start bg-white shadow-sm"
-              }`}
+              className="max-w-[85%] self-end whitespace-pre-wrap rounded-2xl bg-teal-700 px-4 py-2 text-white"
             >
-              {mensagem.parts.map((parte, i) =>
-                parte.type === "text" ? (
-                  // biome-ignore lint/suspicious/noArrayIndexKey: parts have no id and never reorder.
-                  <span key={i}>{parte.text}</span>
-                ) : null,
-              )}
-              {consultando && (
-                <span className="block text-sm text-stone-500">
-                  Consultando o catálogo…
-                </span>
-              )}
+              {textoDe(mensagem)}
             </li>
-          );
-        })}
+          ) : (
+            <RespostaDoAssistente key={mensagem.id} mensagem={mensagem} />
+          ),
+        )}
         {status === "submitted" && (
           <li className="self-start text-sm text-stone-500">
             O Assistente está pensando…
@@ -94,5 +77,41 @@ export function Conversa() {
         Não escreva dados pessoais.
       </p>
     </div>
+  );
+}
+
+function textoDe(mensagem: UIMessage): string {
+  return mensagem.parts
+    .flatMap((p) => (p.type === "text" ? [p.text] : []))
+    .join("");
+}
+
+/**
+ * The Assistente's text in its bubble, then the Cotação cards and the panel.
+ * The cards' numbers come from the tool results, never from the text.
+ */
+function RespostaDoAssistente({ mensagem }: { mensagem: UIMessage }) {
+  const texto = textoDe(mensagem);
+  const consultando = mensagem.parts.some(
+    (p) =>
+      isToolUIPart(p) &&
+      p.state !== "output-available" &&
+      p.state !== "output-error",
+  );
+  return (
+    <li className="flex flex-col gap-3">
+      {(texto || consultando) && (
+        <p className="max-w-[85%] self-start whitespace-pre-wrap rounded-2xl bg-white px-4 py-2 shadow-sm">
+          {texto}
+          {consultando && (
+            <span className="block text-sm text-stone-500">
+              Consultando o catálogo…
+            </span>
+          )}
+        </p>
+      )}
+      <CardsDeCotacao cards={cardsDaResposta(mensagem)} />
+      <PainelDeChamadas chamadas={chamadasDaResposta(mensagem)} />
+    </li>
   );
 }

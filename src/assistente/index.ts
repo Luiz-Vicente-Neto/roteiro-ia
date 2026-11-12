@@ -2,3 +2,11 @@
 export { type Assistente, criarAssistente } from "./assistente";
 export { ASSISTENTE_INDISPONIVEL } from "./mensagens";
 export { resolverModelo } from "./modelo";
+export {
+  type Chamada,
+  type CotacaoDoCard,
+  cardDetalhado,
+  cardsDaResposta,
+  chamadasDaResposta,
+  chaveDoCard,
+} from "./resposta";

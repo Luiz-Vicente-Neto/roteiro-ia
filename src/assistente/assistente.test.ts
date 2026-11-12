@@ -1,4 +1,4 @@
-import type { UIMessageChunk } from "ai";
+import { readUIMessageStream, type UIMessage, type UIMessageChunk } from "ai";
 import {
   convertArrayToReadableStream,
   convertReadableStreamToArray,
@@ -7,7 +7,12 @@ import {
 import { describe, expect, it } from "vitest";
 import { criarBaseEmMemoria, criarCatalogo, relogioFixo } from "../catalogo";
 import { catalogoDeTeste } from "../catalogo/catalogo-de-teste";
-import { criarAssistente } from ".";
+import {
+  cardsDaResposta,
+  chamadasDaResposta,
+  chaveDoCard,
+  criarAssistente,
+} from ".";
 
 const relogio = relogioFixo("2026-12-01T09:00:00-03:00");
 const catalogo = criarCatalogo({
@@ -230,4 +235,174 @@ describe("enviarMensagem", () => {
       ]);
     },
   );
+});
+
+/** The Assistente's answer as useChat assembles it from the stream. */
+async function resposta(
+  modelo: MockLanguageModelV4,
+  mensagem = "4 dias em Gramado, casal",
+): Promise<UIMessage> {
+  const stream = assistenteCom(modelo).enviarMensagem({
+    historico: [],
+    texto: mensagem,
+  });
+  let ultima: UIMessage | undefined;
+  for await (const m of readUIMessageStream({ stream })) ultima = m;
+  if (!ultima) throw new Error("O stream não montou nenhuma mensagem");
+  return ultima;
+}
+
+const casal = { adultos: 2, criancas: [] };
+const buscaDeJaneiro = {
+  grupo: casal,
+  destino: "Gramado",
+  janela: { inicio: "2027-01-01", fim: "2027-01-31" },
+};
+const buscaDeFevereiro = {
+  grupo: casal,
+  destino: "Gramado",
+  janela: { inicio: "2027-02-01", fim: "2027-02-28" },
+};
+
+describe("cardsDaResposta", () => {
+  it("numa resposta com duas chamadas de buscar_pacotes, só as Cotações da última viram cards", async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("buscar_pacotes", buscaDeJaneiro),
+        passoDeFerramenta("buscar_pacotes", buscaDeFevereiro),
+        passoDeTexto("Veja as Cotações de fevereiro nos cards."),
+      ],
+    });
+
+    const cards = cardsDaResposta(await resposta(modelo));
+
+    const janeiro = await catalogo.buscarPacotes(buscaDeJaneiro);
+    const fevereiro = await catalogo.buscarPacotes(buscaDeFevereiro);
+    if (!janeiro.ok || !fevereiro.ok || !("cotacoes" in fevereiro)) {
+      throw new Error("As buscas do teste precisam dar certo");
+    }
+    expect(fevereiro.cotacoes.length).toBeGreaterThan(0);
+    expect(cards).toEqual(fevereiro.cotacoes);
+    expect(cards).not.toEqual(janeiro.cotacoes);
+  });
+
+  it("uma chamada de consultar_preco vira um card de Cotação", async () => {
+    const entrada = {
+      pacote: "gramado-serra-azul-3n",
+      data: "2027-01-09",
+      grupo: { adultos: 2, criancas: [4] },
+    };
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("consultar_preco", entrada),
+        passoDeTexto("O preço está no card."),
+      ],
+    });
+
+    const cards = cardsDaResposta(await resposta(modelo));
+
+    const { ok: _, ...cotacao } = (await catalogo.consultarPreco(entrada)) as {
+      ok: true;
+    } & Record<string, unknown>;
+    expect(cards).toEqual([cotacao]);
+    expect(cards[0]).toMatchObject({
+      pacote: { slug: "gramado-serra-azul-3n" },
+      data: "2027-01-09",
+    });
+  });
+
+  it("mostra uma vez só a mesma Cotação, cotada por consultar_preco e depois achada na última busca", async () => {
+    const fevereiro = await catalogo.buscarPacotes(buscaDeFevereiro);
+    if (!fevereiro.ok || !("cotacoes" in fevereiro)) {
+      throw new Error("A busca do teste precisa dar certo");
+    }
+    const [primeira] = fevereiro.cotacoes;
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("consultar_preco", {
+          pacote: primeira?.pacote.slug,
+          data: primeira?.data,
+          grupo: casal,
+        }),
+        passoDeFerramenta("buscar_pacotes", buscaDeFevereiro),
+        passoDeTexto("Veja os cards."),
+      ],
+    });
+
+    const cards = cardsDaResposta(await resposta(modelo));
+
+    expect(cards).toHaveLength(fevereiro.cotacoes.length);
+    expect(new Set(cards.map(chaveDoCard)).size).toBe(cards.length);
+  });
+
+  it("mantém dois cards da mesma Saída cotada para Grupos diferentes", async () => {
+    const saida = { pacote: "gramado-serra-azul-3n", data: "2027-01-09" };
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("consultar_preco", { ...saida, grupo: casal }),
+        passoDeFerramenta("consultar_preco", {
+          ...saida,
+          grupo: { adultos: 3, criancas: [] },
+        }),
+        passoDeTexto("Compare os cards."),
+      ],
+    });
+
+    const cards = cardsDaResposta(await resposta(modelo));
+
+    expect(cards.map((c) => c.grupo.adultos)).toEqual([2, 3]);
+  });
+
+  it("não faz card de uma chamada que falhou nem de verificar_disponibilidade", async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("consultar_preco", {
+          pacote: "gramado-serra-azul-3n",
+          data: "09/01/2027",
+          grupo: casal,
+        }),
+        passoDeFerramenta("verificar_disponibilidade", {
+          pacote: "gramado-serra-azul-3n",
+          data: "2027-01-09",
+        }),
+        passoDeTexto("Ainda há Vagas."),
+      ],
+    });
+
+    expect(cardsDaResposta(await resposta(modelo))).toEqual([]);
+  });
+});
+
+describe("chamadasDaResposta", () => {
+  it("lista cada chamada de ferramenta da resposta, em ordem, com a entrada e a saída bruta", async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("buscar_pacotes", buscaDeJaneiro),
+        passoDeFerramenta("verificar_disponibilidade", {
+          pacote: "gramado-serra-azul-3n",
+          data: "09/01/2027",
+        }),
+        passoDeTexto("Pronto."),
+      ],
+    });
+
+    const chamadas = chamadasDaResposta(await resposta(modelo));
+
+    expect(chamadas).toEqual([
+      {
+        id: expect.any(String),
+        ferramenta: "buscar_pacotes",
+        ok: true,
+        entrada: buscaDeJaneiro,
+        saida: await catalogo.buscarPacotes(buscaDeJaneiro),
+      },
+      {
+        id: expect.any(String),
+        ferramenta: "verificar_disponibilidade",
+        ok: false,
+        entrada: { pacote: "gramado-serra-azul-3n", data: "09/01/2027" },
+        saida: expect.objectContaining({ ok: false, erro: "ENTRADA_INVALIDA" }),
+      },
+    ]);
+  });
 });

@@ -17,5 +17,6 @@ Regras:
 7. propor_pre_reserva só prepara uma Proposta: ela não reserva nem bloqueia Vagas. Depois de chamá-la, nunca diga que a viagem está reservada ou garantida; diga que o Viajante precisa confirmar a Proposta para garantir as Vagas.
 8. Os valores das ferramentas estão em centavos: mostre em reais (400000 centavos são R$ 4.000,00).
 9. Seja breve. Quando nada servir, explique o motivo com o diagnóstico da ferramenta e sugira um ajuste.
-10. Escreva em texto simples, sem Markdown: nada de asteriscos, cerquilhas, tabelas ou listas com marcadores. A tela mostra o texto como está. Para listar opções, use uma por linha.`;
+10. Escreva em texto simples, sem Markdown: nada de asteriscos, cerquilhas, tabelas ou listas com marcadores. A tela mostra o texto como está. Para listar opções, use uma por linha.
+11. A tela mostra cada Cotação de buscar_pacotes (só da última busca da resposta) e de consultar_preco num card, com foto, Pacote, Hotel, noites, Saída, total e Vagas restantes. Não repita esses dados nem liste os preços no texto: aponte para os cards ("veja os cards abaixo") e comente em uma ou duas frases o que ajuda a escolher, como a Cotação mais barata ou uma Saída com poucas Vagas.`;
 }

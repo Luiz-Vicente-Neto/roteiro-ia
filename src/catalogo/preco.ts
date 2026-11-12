@@ -103,3 +103,6 @@ export function cotar(
     vagasRestantes: vagasRestantes(catalogo, saida),
   };
 }
+
+/** A Cotação as the ferramentas hand it out, without the `ok` flag. */
+export type Cotacao = Omit<ReturnType<typeof cotar>, "ok">;
