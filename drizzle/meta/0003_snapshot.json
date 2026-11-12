@@ -1,0 +1,396 @@
+{
+  "id": "8973d72c-ec80-4a44-bd7e-889bd7874fb7",
+  "prevId": "1a6cb634-cbdc-4bbb-89b4-62d0d50ef588",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.destinos": {
+      "name": "destinos",
+      "schema": "",
+      "columns": {
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nome": {
+          "name": "nome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.faixas_de_criancas": {
+      "name": "faixas_de_criancas",
+      "schema": "",
+      "columns": {
+        "pacote": {
+          "name": "pacote",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idade_minima": {
+          "name": "idade_minima",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "idade_maxima": {
+          "name": "idade_maxima",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "percentual": {
+          "name": "percentual",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "faixas_de_criancas_pacote_pacotes_slug_fk": {
+          "name": "faixas_de_criancas_pacote_pacotes_slug_fk",
+          "tableFrom": "faixas_de_criancas",
+          "tableTo": "pacotes",
+          "columnsFrom": [
+            "pacote"
+          ],
+          "columnsTo": [
+            "slug"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "faixas_de_criancas_pacote_idade_minima_pk": {
+          "name": "faixas_de_criancas_pacote_idade_minima_pk",
+          "columns": [
+            "pacote",
+            "idade_minima"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "faixas_de_criancas_idades_de_crianca": {
+          "name": "faixas_de_criancas_idades_de_crianca",
+          "value": "0 <= \"faixas_de_criancas\".\"idade_minima\" and \"faixas_de_criancas\".\"idade_minima\" <= \"faixas_de_criancas\".\"idade_maxima\" and \"faixas_de_criancas\".\"idade_maxima\" <= 11"
+        },
+        "faixas_de_criancas_percentual_valido": {
+          "name": "faixas_de_criancas_percentual_valido",
+          "value": "\"faixas_de_criancas\".\"percentual\" between 0 and 100"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.hoteis": {
+      "name": "hoteis",
+      "schema": "",
+      "columns": {
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nome": {
+          "name": "nome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "destino": {
+          "name": "destino",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "aceita_pet": {
+          "name": "aceita_pet",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "hoteis_destino_destinos_slug_fk": {
+          "name": "hoteis_destino_destinos_slug_fk",
+          "tableFrom": "hoteis",
+          "tableTo": "destinos",
+          "columnsFrom": [
+            "destino"
+          ],
+          "columnsTo": [
+            "slug"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.pacotes": {
+      "name": "pacotes",
+      "schema": "",
+      "columns": {
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nome": {
+          "name": "nome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hotel": {
+          "name": "hotel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "noites": {
+          "name": "noites",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inclui": {
+          "name": "inclui",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "preco_base": {
+          "name": "preco_base",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "aceita_criancas": {
+          "name": "aceita_criancas",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "pacotes_hotel_hoteis_slug_fk": {
+          "name": "pacotes_hotel_hoteis_slug_fk",
+          "tableFrom": "pacotes",
+          "tableTo": "hoteis",
+          "columnsFrom": [
+            "hotel"
+          ],
+          "columnsTo": [
+            "slug"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "pacotes_noites_positivas": {
+          "name": "pacotes_noites_positivas",
+          "value": "\"pacotes\".\"noites\" > 0"
+        },
+        "pacotes_preco_base_em_reais_inteiros": {
+          "name": "pacotes_preco_base_em_reais_inteiros",
+          "value": "\"pacotes\".\"preco_base\" > 0 and \"pacotes\".\"preco_base\" % 100 = 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.periodos_tarifarios": {
+      "name": "periodos_tarifarios",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "integer",
+          "primaryKey": true,
+          "notNull": true,
+          "identity": {
+            "type": "always",
+            "name": "periodos_tarifarios_id_seq",
+            "schema": "public",
+            "increment": "1",
+            "startWith": "1",
+            "minValue": "1",
+            "maxValue": "2147483647",
+            "cache": "1",
+            "cycle": false
+          }
+        },
+        "nome": {
+          "name": "nome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "tipo": {
+          "name": "tipo",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "destino": {
+          "name": "destino",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "inicio": {
+          "name": "inicio",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fim": {
+          "name": "fim",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fator": {
+          "name": "fator",
+          "type": "numeric(4, 2)",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "periodos_tarifarios_destino_destinos_slug_fk": {
+          "name": "periodos_tarifarios_destino_destinos_slug_fk",
+          "tableFrom": "periodos_tarifarios",
+          "tableTo": "destinos",
+          "columnsFrom": [
+            "destino"
+          ],
+          "columnsTo": [
+            "slug"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "periodos_tarifarios_tipo_valido": {
+          "name": "periodos_tarifarios_tipo_valido",
+          "value": "\"periodos_tarifarios\".\"tipo\" in ('temporada', 'feriado')"
+        },
+        "periodos_tarifarios_destino_so_na_temporada": {
+          "name": "periodos_tarifarios_destino_so_na_temporada",
+          "value": "(\"periodos_tarifarios\".\"tipo\" = 'temporada') = (\"periodos_tarifarios\".\"destino\" is not null)"
+        },
+        "periodos_tarifarios_fim_depois_do_inicio": {
+          "name": "periodos_tarifarios_fim_depois_do_inicio",
+          "value": "\"periodos_tarifarios\".\"fim\" >= \"periodos_tarifarios\".\"inicio\""
+        },
+        "periodos_tarifarios_fator_positivo": {
+          "name": "periodos_tarifarios_fator_positivo",
+          "value": "\"periodos_tarifarios\".\"fator\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.saidas": {
+      "name": "saidas",
+      "schema": "",
+      "columns": {
+        "pacote": {
+          "name": "pacote",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data": {
+          "name": "data",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vagas_totais": {
+          "name": "vagas_totais",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "saidas_pacote_pacotes_slug_fk": {
+          "name": "saidas_pacote_pacotes_slug_fk",
+          "tableFrom": "saidas",
+          "tableTo": "pacotes",
+          "columnsFrom": [
+            "pacote"
+          ],
+          "columnsTo": [
+            "slug"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "saidas_pacote_data_pk": {
+          "name": "saidas_pacote_data_pk",
+          "columns": [
+            "pacote",
+            "data"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "saidas_vagas_nao_negativas": {
+          "name": "saidas_vagas_nao_negativas",
+          "value": "\"saidas\".\"vagas_totais\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { type Falha, falha } from "./erros";
+import { IDADE_ADULTA } from "./grupo";
 
 // Messages are written for the model to fix its own call.
 const INFORME_O_PACOTE =
@@ -35,16 +36,21 @@ const grupo = z
         .number({ error: "Informe o número de adultos, como 2." })
         .int("O número de adultos é inteiro.")
         .min(1, "O Grupo precisa de pelo menos 1 adulto."),
-      // Children are priced by the Política de Crianças (#5); until then the
-      // list must be empty, so no child is ever quoted at an adult's price.
       criancas: z
-        .array(z.number().int().min(0))
-        .max(
-          0,
-          "Por enquanto só é possível cotar Grupos de adultos; envie criancas como lista vazia.",
+        .array(
+          z
+            .number({ error: "Cada idade é um número de anos, como 7." })
+            .int("Cada idade é um número inteiro de anos.")
+            .min(0, "Uma idade não pode ser negativa.")
+            .max(
+              17,
+              "Só informe em criancas quem tem até 17 anos; de 18 em diante, some em adultos.",
+            ),
         )
         .default([])
-        .describe("Idade de cada criança, em anos."),
+        .describe(
+          `Idade de cada criança, em anos inteiros (0 a 17). De ${IDADE_ADULTA} anos em diante, a pessoa paga como adulto.`,
+        ),
     },
     { error: "Informe o Grupo, como { adultos: 2, criancas: [] }." },
   )

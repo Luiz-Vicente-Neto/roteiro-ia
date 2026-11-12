@@ -73,6 +73,13 @@ const dados: DadosDoCatalogo = {
       noites: 3,
       inclui: ["Café da manhã", "City tour"],
       precoBase: 214100,
+      politicaDeCriancas: {
+        aceitaCriancas: true,
+        faixas: [
+          { idadeMinima: 0, idadeMaxima: 5, percentual: 0 },
+          { idadeMinima: 6, idadeMaxima: 11, percentual: 50 },
+        ],
+      },
     },
     {
       slug: "bonito-rio-da-prata-4n",
@@ -81,6 +88,7 @@ const dados: DadosDoCatalogo = {
       noites: 4,
       inclui: ["Flutuação no Rio da Prata"],
       precoBase: 300000,
+      politicaDeCriancas: { aceitaCriancas: false },
     },
   ],
   saidas: [
@@ -125,6 +133,7 @@ describe("consultarPreco", () => {
       periodosQuePerderam: [],
       precoPorPessoa: [{ pessoa: "adulto", preco: 214100 }],
       total: 214100,
+      vagasDoGrupo: 1,
       vagasRestantes: 20,
     });
   });
@@ -241,6 +250,99 @@ describe("consultarPreco", () => {
     });
   });
 
+  it("cobra de um casal com uma criança de 7 anos 2 adultos mais 50% do adulto, com a faixa no detalhe", async () => {
+    // Adult: R$ 2.141 × 1,35 = R$ 2.890; child: 50% of R$ 2.890 = R$ 1.445.
+    expect(
+      await catalogo.consultarPreco({
+        pacote: "gramado-serra-azul-3n",
+        data: "2027-07-10",
+        grupo: { adultos: 2, criancas: [7] },
+      }),
+    ).toMatchObject({
+      ok: true,
+      grupo: { adultos: 2, criancas: [7] },
+      precoPorPessoa: [
+        { pessoa: "adulto", preco: 289000 },
+        { pessoa: "adulto", preco: 289000 },
+        {
+          pessoa: "crianca",
+          idade: 7,
+          faixa: { idadeMinima: 6, idadeMaxima: 11 },
+          percentual: 50,
+          preco: 144500,
+        },
+      ],
+      total: 722500,
+    });
+  });
+
+  it("mostra uma criança da faixa de 0% com preço zero, ocupando uma Vaga", async () => {
+    expect(
+      await catalogo.consultarPreco({
+        pacote: "gramado-serra-azul-3n",
+        data: "2027-03-06",
+        grupo: { adultos: 1, criancas: [3] },
+      }),
+    ).toMatchObject({
+      ok: true,
+      precoPorPessoa: [
+        { pessoa: "adulto", preco: 214100 },
+        {
+          pessoa: "crianca",
+          idade: 3,
+          faixa: { idadeMinima: 0, idadeMaxima: 5 },
+          percentual: 0,
+          preco: 0,
+        },
+      ],
+      total: 214100,
+      vagasDoGrupo: 2,
+    });
+  });
+
+  it.each([12, 17])(
+    "cobra e detalha uma pessoa de %i anos como adulto",
+    async (idade) => {
+      expect(
+        await catalogo.consultarPreco({
+          pacote: "gramado-serra-azul-3n",
+          data: "2027-03-06",
+          grupo: { adultos: 1, criancas: [idade] },
+        }),
+      ).toMatchObject({
+        ok: true,
+        precoPorPessoa: [
+          { pessoa: "adulto", preco: 214100 },
+          { pessoa: "adulto", idade, preco: 214100 },
+        ],
+        total: 428200,
+        vagasDoGrupo: 2,
+      });
+    },
+  );
+
+  it("aceita adolescentes num Pacote que não aceita crianças, porque contam como adultos", async () => {
+    expect(
+      await catalogo.consultarPreco({
+        pacote: "bonito-rio-da-prata-4n",
+        data: "2027-07-10",
+        grupo: { adultos: 1, criancas: [12] },
+      }),
+    ).toMatchObject({ ok: true, total: 600000 });
+  });
+
+  it("recusa um Grupo com criança num Pacote que não aceita crianças com GRUPO_NAO_ACEITO e o motivo", async () => {
+    const resultado = await catalogo.consultarPreco({
+      pacote: "bonito-rio-da-prata-4n",
+      data: "2027-07-10",
+      grupo: { adultos: 2, criancas: [12, 7] },
+    });
+
+    expect(resultado).toMatchObject({ ok: false, erro: "GRUPO_NAO_ACEITO" });
+    expect(resultado.ok || resultado.mensagem).toContain("não aceita crianças");
+    expect(resultado.ok || resultado.mensagem).toContain("7 anos");
+  });
+
   it("recusa um Pacote que não existe com PACOTE_DESCONHECIDO", async () => {
     expect(
       await catalogo.consultarPreco({
@@ -289,9 +391,29 @@ describe("consultarPreco", () => {
       campo: "grupo.adultos",
     },
     {
-      caso: "com crianças, que ainda não são cotadas",
-      grupo: { adultos: 2, criancas: [7] },
-      campo: "grupo.criancas",
+      caso: "só com crianças",
+      grupo: { adultos: 0, criancas: [7] },
+      campo: "grupo.adultos",
+    },
+    {
+      caso: "com idade negativa",
+      grupo: { adultos: 2, criancas: [-1] },
+      campo: "grupo.criancas.0",
+    },
+    {
+      caso: "com idade fracionada",
+      grupo: { adultos: 2, criancas: [4, 6.5] },
+      campo: "grupo.criancas.1",
+    },
+    {
+      caso: "com idade de 18 anos em criancas",
+      grupo: { adultos: 2, criancas: [18] },
+      campo: "grupo.criancas.0",
+    },
+    {
+      caso: "com idade que não é número",
+      grupo: { adultos: 2, criancas: ["sete"] },
+      campo: "grupo.criancas.0",
     },
   ])(
     "recusa um Grupo $caso com ENTRADA_INVALIDA, apontando o campo",

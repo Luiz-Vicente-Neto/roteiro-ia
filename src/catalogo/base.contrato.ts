@@ -34,6 +34,7 @@ const dados: DadosDoCatalogo = {
       noites: 7,
       inclui: [],
       precoBase: 389000,
+      politicaDeCriancas: { aceitaCriancas: false },
     },
     {
       slug: "campos-chateau-montanha-2n",
@@ -42,6 +43,15 @@ const dados: DadosDoCatalogo = {
       noites: 2,
       inclui: ["Café da manhã", "Fondue"],
       precoBase: 112300,
+      // Faixas out of order, and single-age ones at both ends.
+      politicaDeCriancas: {
+        aceitaCriancas: true,
+        faixas: [
+          { idadeMinima: 1, idadeMaxima: 10, percentual: 35 },
+          { idadeMinima: 11, idadeMaxima: 11, percentual: 100 },
+          { idadeMinima: 0, idadeMaxima: 0, percentual: 0 },
+        ],
+      },
     },
   ],
   saidas: [
@@ -112,13 +122,26 @@ const dados: DadosDoCatalogo = {
 /** The same cases run against every Base do Catálogo implementation. */
 export function testarContratoDaBase(nome: string, criarBase: CriarBase) {
   describe(`Base do Catálogo (${nome})`, () => {
-    it("lê de volta exatamente o catálogo carregado, ordenado por slug, as Saídas por Pacote e data, e os Períodos por início, nome e Destino", async () => {
+    it("lê de volta exatamente o catálogo carregado, ordenado por slug, as faixas da Política de Crianças por idade, as Saídas por Pacote e data, e os Períodos por início, nome e Destino", async () => {
       const base = await criarBase(dados);
 
       expect(await base.lerCatalogo()).toEqual({
         destinos: [dados.destinos[1], dados.destinos[0]],
         hoteis: [dados.hoteis[1], dados.hoteis[0]],
-        pacotes: [dados.pacotes[1], dados.pacotes[0]],
+        pacotes: [
+          {
+            ...dados.pacotes[1],
+            politicaDeCriancas: {
+              aceitaCriancas: true,
+              faixas: [
+                { idadeMinima: 0, idadeMaxima: 0, percentual: 0 },
+                { idadeMinima: 1, idadeMaxima: 10, percentual: 35 },
+                { idadeMinima: 11, idadeMaxima: 11, percentual: 100 },
+              ],
+            },
+          },
+          dados.pacotes[0],
+        ],
         saidas: [
           dados.saidas[3],
           dados.saidas[1],
@@ -161,6 +184,25 @@ export function testarContratoDaBase(nome: string, criarBase: CriarBase) {
       const { hoteis } = await base.lerCatalogo();
 
       expect(hoteis.map((h) => h.slug)).toEqual(["casa-zen", "casarao"]);
+    });
+
+    it("recusa uma Política de Crianças com uma idade sem faixa, que ficaria sem preço", async () => {
+      const [, pacote] = dados.pacotes;
+      await expect(
+        criarBase({
+          ...dados,
+          pacotes: [
+            {
+              ...pacote,
+              politicaDeCriancas: {
+                aceitaCriancas: true,
+                faixas: [{ idadeMinima: 0, idadeMaxima: 10, percentual: 0 }],
+              },
+            },
+          ],
+          saidas: [],
+        }),
+      ).rejects.toThrow(/campos-chateau-montanha-2n/);
     });
 
     it("lê um catálogo vazio", async () => {

@@ -8,6 +8,7 @@ import {
 } from "./entradas";
 import { falha } from "./erros";
 import { criarFerramentas } from "./ferramentas";
+import { recusaDoGrupo } from "./grupo";
 import { cotar } from "./preco";
 import type { Relogio } from "./relogio";
 import type { DadosDoCatalogo } from "./tipos";
@@ -100,6 +101,8 @@ export function criarCatalogo({
       const catalogo = await base.lerCatalogo();
       const encontrada = encontrarSaida(catalogo, entrada, relogio.hoje());
       if (!encontrada.ok) return encontrada;
+      const recusa = recusaDoGrupo(encontrada.pacote, entrada.grupo);
+      if (recusa) return recusa;
       return cotar(
         catalogo,
         encontrada.pacote,

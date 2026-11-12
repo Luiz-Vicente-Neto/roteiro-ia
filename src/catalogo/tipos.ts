@@ -23,7 +23,24 @@ export interface Pacote {
   inclui: string[];
   /** Price per adult in baixa temporada, in centavos (a multiple of 100). */
   precoBase: number;
+  politicaDeCriancas: PoliticaDeCriancas;
 }
+
+/** Ages from `idadeMinima` to `idadeMaxima`, inclusive, pay `percentual` % of the adult price. */
+export interface FaixaDeIdade {
+  idadeMinima: number;
+  idadeMaxima: number;
+  /** Whole percent of the adult price, from 0 to 100. */
+  percentual: number;
+}
+
+/**
+ * Política de Crianças: either the Pacote does not take children, or its
+ * faixas cover every age from 0 to 11 exactly once, ordered by age.
+ */
+export type PoliticaDeCriancas =
+  | { aceitaCriancas: false }
+  | { aceitaCriancas: true; faixas: FaixaDeIdade[] };
 
 export interface Saida {
   /** Slug of the Pacote. */

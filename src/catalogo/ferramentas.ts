@@ -6,6 +6,7 @@ import {
   entradaVerificarDisponibilidade,
 } from "./entradas";
 import type { Falha } from "./erros";
+import { IDADE_ADULTA } from "./grupo";
 
 export type ResultadoDeFerramenta = { readonly ok: true } | Falha;
 
@@ -39,9 +40,9 @@ export function criarFerramentas(operacoes: Operacoes): Ferramenta[] {
       nome: "consultar_preco",
       descricao:
         "Calcula o preço de um Pacote numa data de Saída para um Grupo e devolve uma Cotação. Use para responder quanto custa uma viagem numa data específica, ou para comparar datas. " +
-        "Recebe o slug do Pacote, a data da Saída (AAAA-MM-DD) e o Grupo (adultos e idades das crianças). " +
-        "A Cotação traz o preço de cada pessoa e o total do Grupo em centavos, o Período Tarifário aplicado e seu fator (ou baixa temporada), os Períodos que também cobriam a data e perderam, e as Vagas restantes. " +
-        "Se a data não for uma Saída do Pacote ou já tiver passado, devolve um erro com as Saídas mais próximas em sugestoes.",
+        `Recebe o slug do Pacote, a data da Saída (AAAA-MM-DD) e o Grupo (adultos e idades das crianças; de ${IDADE_ADULTA} anos em diante, a pessoa paga como adulto). ` +
+        "A Cotação traz o preço de cada pessoa (cada criança com a faixa de idade e o percentual do preço de adulto da Política de Crianças) e o total do Grupo em centavos, o Período Tarifário aplicado e seu fator (ou baixa temporada), os Períodos que também cobriam a data e perderam, quantas Vagas o Grupo ocupa e as Vagas restantes. " +
+        "Se a data não for uma Saída do Pacote ou já tiver passado, devolve um erro com as Saídas mais próximas em sugestoes. Se o Pacote não aceitar crianças e o Grupo tiver alguma, devolve GRUPO_NAO_ACEITO com o motivo.",
       schemaDeEntrada: entradaConsultarPreco,
       executar: (entrada) =>
         operacoes.consultarPreco(entrada as EntradaConsultarPreco),

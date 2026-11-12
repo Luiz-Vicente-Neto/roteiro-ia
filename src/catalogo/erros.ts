@@ -7,7 +7,8 @@ export type CodigoDeErro =
   | "ENTRADA_INVALIDA"
   | "PACOTE_DESCONHECIDO"
   | "SAIDA_INEXISTENTE"
-  | "SAIDA_ENCERRADA";
+  | "SAIDA_ENCERRADA"
+  | "GRUPO_NAO_ACEITO";
 
 export interface Falha<C extends CodigoDeErro = CodigoDeErro> {
   ok: false;

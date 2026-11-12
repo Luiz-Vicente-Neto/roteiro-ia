@@ -39,12 +39,38 @@ export const pacotes = pgTable(
     inclui: text().array().notNull(),
     // Centavos, always whole reais.
     precoBase: integer("preco_base").notNull(),
+    // When true, faixas_de_criancas holds one faixa per child age (0 to 11).
+    aceitaCriancas: boolean("aceita_criancas").notNull(),
   },
   (t) => [
     check("pacotes_noites_positivas", sql`${t.noites} > 0`),
     check(
       "pacotes_preco_base_em_reais_inteiros",
       sql`${t.precoBase} > 0 and ${t.precoBase} % 100 = 0`,
+    ),
+  ],
+);
+
+export const faixasDeCriancas = pgTable(
+  "faixas_de_criancas",
+  {
+    pacote: text()
+      .notNull()
+      .references(() => pacotes.slug),
+    idadeMinima: integer("idade_minima").notNull(),
+    idadeMaxima: integer("idade_maxima").notNull(),
+    // Whole percent of the adult price.
+    percentual: integer().notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.pacote, t.idadeMinima] }),
+    check(
+      "faixas_de_criancas_idades_de_crianca",
+      sql`0 <= ${t.idadeMinima} and ${t.idadeMinima} <= ${t.idadeMaxima} and ${t.idadeMaxima} <= 11`,
+    ),
+    check(
+      "faixas_de_criancas_percentual_valido",
+      sql`${t.percentual} between 0 and 100`,
     ),
   ],
 );

@@ -5,8 +5,8 @@ import type { DadosDoCatalogo } from "./tipos";
  * Postgres through the seed and the in-memory Base in tests and evaluation,
  * so both always hold exactly the same catalog.
  *
- * Small on purpose for now: 1 Destino, a few Pacotes and Períodos. The full 2027
- * catalog comes in a later ticket.
+ * Small on purpose for now: 1 Destino, a few Pacotes, Políticas de Crianças
+ * and Períodos. The full 2027 catalog comes in a later ticket.
  */
 export const semente: DadosDoCatalogo = {
   destinos: [{ slug: "gramado", nome: "Gramado" }],
@@ -36,6 +36,13 @@ export const semente: DadosDoCatalogo = {
         "City tour por Gramado e Canela",
       ],
       precoBase: 214100,
+      politicaDeCriancas: {
+        aceitaCriancas: true,
+        faixas: [
+          { idadeMinima: 0, idadeMaxima: 5, percentual: 0 },
+          { idadeMinima: 6, idadeMaxima: 11, percentual: 50 },
+        ],
+      },
     },
     {
       slug: "gramado-serra-azul-5n",
@@ -49,6 +56,13 @@ export const semente: DadosDoCatalogo = {
         "Passeio de Maria Fumaça",
       ],
       precoBase: 329000,
+      politicaDeCriancas: {
+        aceitaCriancas: true,
+        faixas: [
+          { idadeMinima: 0, idadeMaxima: 1, percentual: 0 },
+          { idadeMinima: 2, idadeMaxima: 11, percentual: 70 },
+        ],
+      },
     },
     {
       slug: "gramado-vale-das-hortensias-4n",
@@ -57,6 +71,7 @@ export const semente: DadosDoCatalogo = {
       noites: 4,
       inclui: ["Café da manhã", "Fondue de boas-vindas"],
       precoBase: 276000,
+      politicaDeCriancas: { aceitaCriancas: false },
     },
   ],
   saidas: [
