@@ -53,6 +53,12 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # Um componente "use client" que importa código do servidor (o Postgres,
+      # o Drizzle) passa no tsc, mas quebra o bundle do navegador. Só o build vê.
+      # Não precisa da chave do modelo: o Assistente nasce na primeira requisição.
+      - name: Build
+        run: pnpm build
+
       # A schema.ts change without its migration would pass every test,
       # since the tests apply the migrations, not the schema.
       - name: Migrations em dia com o schema
