@@ -1,7 +1,10 @@
 import type { BaseDoCatalogo } from "./base";
+import { buscar, destinosDaBusca } from "./busca";
 import {
+  type EntradaBuscarPacotes,
   type EntradaConsultarPreco,
   type EntradaVerificarDisponibilidade,
+  entradaBuscarPacotes,
   entradaConsultarPreco,
   entradaVerificarDisponibilidade,
   validar,
@@ -74,6 +77,32 @@ export function criarCatalogo({
   relogio: Relogio;
 }) {
   const operacoes = {
+    async buscarPacotes(bruta: EntradaBuscarPacotes) {
+      const validacao = validar(entradaBuscarPacotes, bruta);
+      if (!validacao.ok) return validacao;
+      const { grupo, destino, janela, orcamento } = validacao.valor;
+      const catalogo = await base.lerCatalogo();
+      const destinos = destinosDaBusca(catalogo.destinos, destino);
+      if (destinos.length === 0) {
+        const existentes = catalogo.destinos.map((d) => d.nome);
+        return falha(
+          "DESTINO_DESCONHECIDO",
+          `Não existe Destino chamado "${destino}" no catálogo. Os Destinos existentes estão em sugestoes: use um deles, omita destino para buscar em todos, ou explique ao viajante o que existe.`,
+          existentes,
+        );
+      }
+      const hoje = relogio.hoje();
+      // Past Saídas never qualify, even inside the janela.
+      const inicio = janela && janela.inicio > hoje ? janela.inicio : hoje;
+      return buscar(catalogo, {
+        grupo,
+        destinos,
+        inicio,
+        fim: janela?.fim,
+        orcamento,
+      });
+    },
+
     async verificarDisponibilidade(bruta: EntradaVerificarDisponibilidade) {
       const validacao = validar(entradaVerificarDisponibilidade, bruta);
       if (!validacao.ok) return validacao;

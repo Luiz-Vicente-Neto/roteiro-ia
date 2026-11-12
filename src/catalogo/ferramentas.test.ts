@@ -88,6 +88,38 @@ describe("ferramentas", () => {
     },
   );
 
+  it("expõe buscar_pacotes dizendo que o orçamento é total e o grupo é obrigatório", () => {
+    const buscar = ferramenta("buscar_pacotes");
+
+    expect(buscar.descricao).toMatch(/total do Grupo/i);
+    expect(buscar.descricao).toMatch(/grupo.*obrigatório/i);
+    expect(
+      buscar.schemaDeEntrada.safeParse({ grupo: { adultos: 2 } }).success,
+    ).toBe(true);
+    expect(
+      buscar.schemaDeEntrada.safeParse({ destino: "Gramado" }).success,
+    ).toBe(false);
+  });
+
+  it.each([
+    {
+      destino: "gramado",
+      janela: { inicio: "2027-01-01", fim: "2027-01-31" },
+      grupo: { adultos: 2 },
+      orcamento: 600000,
+    },
+    { destino: "Bonito", grupo: { adultos: 2 } },
+    { grupo: { adultos: 2 }, orcamento: 100 },
+    { destino: "Gramado" },
+  ])(
+    "executar buscar_pacotes dá o mesmo resultado que a operação direta (%o)",
+    async (entrada) => {
+      expect(await ferramenta("buscar_pacotes").executar(entrada)).toEqual(
+        await catalogo.buscarPacotes(entrada as never),
+      );
+    },
+  );
+
   it("executar com entrada que não é um objeto devolve ENTRADA_INVALIDA em vez de lançar exceção", async () => {
     expect(
       await ferramenta("verificar_disponibilidade").executar("gramado"),

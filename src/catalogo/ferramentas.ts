@@ -1,7 +1,9 @@
 import type { z } from "zod";
 import {
+  type EntradaBuscarPacotes,
   type EntradaConsultarPreco,
   type EntradaVerificarDisponibilidade,
+  entradaBuscarPacotes,
   entradaConsultarPreco,
   entradaVerificarDisponibilidade,
 } from "./entradas";
@@ -25,6 +27,7 @@ export interface Ferramenta {
 }
 
 interface Operacoes {
+  buscarPacotes(entrada: EntradaBuscarPacotes): Promise<ResultadoDeFerramenta>;
   consultarPreco(
     entrada: EntradaConsultarPreco,
   ): Promise<ResultadoDeFerramenta>;
@@ -36,6 +39,20 @@ interface Operacoes {
 export function criarFerramentas(operacoes: Operacoes): Ferramenta[] {
   // The casts are safe: every operation validates its own input.
   return [
+    {
+      nome: "buscar_pacotes",
+      descricao:
+        'Busca Pacotes do catálogo para um Grupo e devolve opções concretas e compráveis, cada uma uma Cotação. Use para pedidos como "4 dias em Gramado em julho, casal, até R$ 4 mil" ou buscas abertas ("algo até R$ 3 mil em março"). ' +
+        `O grupo é obrigatório (adultos e idades das crianças; de ${IDADE_ADULTA} anos em diante, a pessoa conta como adulto). O destino (sem diferenciar maiúsculas nem acentos), a janela de datas em que a Saída começa e o orçamento são opcionais. ` +
+        "O orçamento é o valor TOTAL do Grupo, não por pessoa, em centavos (R$ 4.000 = 400000). Sem destino, busca em todos; sem janela, de hoje até a última Saída. " +
+        "Ficam só as Saídas futuras, com Vagas para o Grupo inteiro, dentro do orçamento e em Pacotes cuja Política de Crianças aceita o Grupo. " +
+        "Devolve no máximo uma Cotação por Pacote (a da Saída mais barata na janela), com as outras datas que também servem em outrasSaidas, do total mais barato para o mais caro, até 10 resultados. " +
+        "Se nada servir, devolve cotacoes vazia e um diagnostico: quantas Saídas futuras havia na janela e quantas caíram pela Política de Crianças, por falta de Vagas e por orçamento (cada Saída conta só no primeiro desses motivos, nessa ordem), com o menorPreco entre as que caíram só por orçamento; use-o para explicar ao viajante e sugerir um ajuste. " +
+        "Se o destino não existir, devolve DESTINO_DESCONHECIDO com os Destinos existentes em sugestoes.",
+      schemaDeEntrada: entradaBuscarPacotes,
+      executar: (entrada) =>
+        operacoes.buscarPacotes(entrada as EntradaBuscarPacotes),
+    },
     {
       nome: "consultar_preco",
       descricao:

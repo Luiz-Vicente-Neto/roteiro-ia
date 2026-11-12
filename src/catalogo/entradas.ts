@@ -67,6 +67,52 @@ export const entradaConsultarPreco = z.object({
 
 export type EntradaConsultarPreco = z.input<typeof entradaConsultarPreco>;
 
+const dataDaJanela = z.iso.date({
+  error:
+    "Use uma data de calendário real no formato AAAA-MM-DD, sem hora (ex.: 2027-07-01).",
+});
+
+export const entradaBuscarPacotes = z.object({
+  grupo,
+  destino: z
+    .string({ error: "O destino é o nome de um Destino, como Gramado." })
+    .trim()
+    .min(1, "Informe o nome do Destino, ou omita destino para buscar em todos.")
+    .optional()
+    .describe(
+      "Nome do Destino (ex.: Gramado). Maiúsculas e acentos não importam. Omita para buscar em todos os Destinos.",
+    ),
+  janela: z
+    .object(
+      {
+        inicio: dataDaJanela.describe(
+          "Primeiro dia em que a Saída pode começar, AAAA-MM-DD, inclusive.",
+        ),
+        fim: dataDaJanela.describe(
+          "Último dia em que a Saída pode começar, AAAA-MM-DD, inclusive.",
+        ),
+      },
+      { error: "A janela é { inicio, fim }, com datas AAAA-MM-DD." },
+    )
+    .refine((j) => j.inicio <= j.fim, {
+      error: "O início da janela não pode ser depois do fim.",
+    })
+    .optional()
+    .describe(
+      "Datas em que a Saída pode começar. Omita para buscar de hoje até a última Saída do catálogo.",
+    ),
+  orcamento: z
+    .number({ error: "O orçamento é um valor em centavos, como 400000." })
+    .int("O orçamento é um número inteiro de centavos.")
+    .positive("O orçamento precisa ser maior que zero.")
+    .optional()
+    .describe(
+      "Valor máximo do TOTAL do Grupo (não por pessoa), em centavos: R$ 4.000 é 400000. Omita se não houver limite.",
+    ),
+});
+
+export type EntradaBuscarPacotes = z.input<typeof entradaBuscarPacotes>;
+
 /** Validates `entrada`, turning schema violations into an ENTRADA_INVALIDA value. */
 export function validar<S extends z.ZodType>(
   schema: S,
