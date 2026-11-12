@@ -8,7 +8,7 @@ Você descreve a viagem que tem na cabeça:
 
 E o assistente devolve **pacotes reais de um catálogo**, com preço e disponibilidade consultados na hora e a fonte de cada informação.
 
-> 🚧 **Em construção.** A etapa 1 (catálogo e ferramentas testadas) está pronta. O chat com IA é a próxima. Acompanhe no [roadmap](#-roadmap) abaixo.
+> 🚧 **Em construção.** As etapas 1 (catálogo e ferramentas testadas) e 2 (chat com o Assistente) estão prontas. A busca semântica com citações (RAG) é a próxima. Acompanhe no [roadmap](#-roadmap) abaixo.
 
 ---
 
@@ -32,7 +32,7 @@ A maioria dos chatbots com IA responde de memória e, às vezes, inventa. O Rote
 | Front-end e back-end | Next.js · TypeScript · Tailwind CSS | ✅ |
 | Banco de dados | Postgres + pgvector (`docker compose` local) · Drizzle ORM | ✅ |
 | Qualidade | Vitest · Biome · pre-commit (Lefthook) · GitHub Actions | ✅ |
-| Modelo de linguagem | Claude API com *tool use* | 🔜 |
+| Modelo de linguagem | Vercel AI SDK com *tool use* e streaming · provedor trocável no `.env` (Gemini, Claude, GPT ou Grok) | ✅ |
 | Integração externa | Servidor MCP (SDK oficial em TypeScript) | 🔜 |
 | Deploy | Vercel + Supabase | 🔜 |
 
@@ -54,7 +54,7 @@ O mesmo catálogo alimenta o Postgres (pelo seed) e uma base em memória usada n
 
 ## 🛠️ Ferramentas do agente
 
-As ferramentas vivem num único módulo ([src/catalogo/](src/catalogo/)), sem dependência de Next.js nem do banco: ele fala com uma *base do catálogo* trocável (Postgres ou memória). O chat e o servidor MCP vão usar essa mesma lista, sem duplicação.
+As ferramentas vivem num único módulo ([src/catalogo/](src/catalogo/)), sem dependência de Next.js nem do banco: ele fala com uma *base do catálogo* trocável (Postgres ou memória). O chat já usa essa lista, e o servidor MCP vai usar a mesma, sem duplicação.
 
 | Ferramenta | O que faz | Status |
 | --- | --- | --- |
@@ -64,22 +64,41 @@ As ferramentas vivem num único módulo ([src/catalogo/](src/catalogo/)), sem de
 | `propor_pre_reserva` | Prepara uma proposta de pré-reserva, válida por 15 minutos. **Não reserva nem bloqueia vagas** | ✅ |
 | `buscar_politicas` | Busca semântica (RAG) em políticas, FAQs e descrições | 🔜 |
 
-**Por que o modelo não confirma a reserva?** A confirmação não é uma ferramenta: só a pessoa confirma a proposta, por um caminho fora da conversa com o modelo. Ao confirmar, as vagas são bloqueadas de forma atômica no banco, então duas confirmações simultâneas nunca vendem a mesma vaga.
+**Por que o modelo não confirma a reserva?** A confirmação não é uma ferramenta: só a pessoa confirma a proposta, clicando no botão do card, por um caminho que não passa pelo modelo. Ao confirmar, as vagas são bloqueadas de forma atômica no banco, então duas confirmações simultâneas nunca vendem a mesma vaga.
 
 Entradas inválidas do modelo voltam como erro estruturado (com sugestões, como as saídas mais próximas), nunca como exceção.
 
 ---
 
+## 💬 O chat
+
+O Assistente ([src/assistente/](src/assistente/)) conversa em streaming e só afirma preço, vagas e datas que uma ferramenta devolveu naquela conversa. Como o catálogo, é um módulo sem Next.js nem banco dentro: recebe o modelo, o catálogo, uma *base de conversas* (Postgres ou memória) e um relógio.
+
+- **Cards a partir dos dados, não do texto.** Cada cotação vira um card com a foto do destino, o hotel, as noites, a data de saída, o total e as vagas restantes. Os valores vêm do resultado da ferramenta e nunca são reescritos pelo modelo.
+- **Painel "como cheguei nessa resposta".** Cada resposta lista, em ordem, as ferramentas chamadas, com a entrada e a saída bruta de cada uma.
+- **Pré-reserva só com o seu clique.** O Assistente prepara uma proposta, e o card mostra os botões **Confirmar pré-reserva** e **Descartar**. Depois do clique, o card mostra o código da pré-reserva e até quando as vagas ficam bloqueadas.
+- **Ninguém forja uma confirmação.** O que você faz no card chega ao modelo como um evento do sistema, com um marcador que é removido de qualquer texto digitado na conversa.
+- **Histórico sem login.** As conversas ficam salvas e listadas na barra lateral, ligadas a um id anônimo num cookie. O link de uma conversa não abre em outro navegador, e conversas paradas há mais de 90 dias são apagadas.
+- **Limites claros.** No máximo 6 passos de ferramenta por resposta e 40 mensagens por conversa. Se o provedor de IA falhar, você vê um aviso amigável e a sua mensagem continua salva.
+- **Modelo trocável.** O provedor é escolhido no `.env` como `MODELO=provedor:modelo`. O padrão é o Gemini Flash, no plano gratuito do Google AI Studio, e um provedor desconhecido ou uma chave ausente dá erro na inicialização, em vez de cair em outro provedor.
+
+Os testes do Assistente usam um modelo falso com respostas roteirizadas, então rodam sem chave de provedor e sem rede.
+
+---
+
 ## 💻 Rodando localmente
 
-Pré-requisitos: Node 24, pnpm e Docker.
+Pré-requisitos: Node 24, pnpm, Docker e a chave de um provedor de IA (a do [Google AI Studio](https://aistudio.google.com/apikey) é gratuita).
 
 ```bash
 pnpm install
-pnpm dev        # sobe o Postgres, aplica as migrations, roda o seed (se o banco estiver vazio) e inicia o Next
+cp .env.example .env   # preencha GOOGLE_GENERATIVE_AI_API_KEY, ou troque MODELO e a chave por outro provedor
+pnpm dev               # sobe o Postgres, aplica as migrations, roda o seed (se o banco estiver vazio) e inicia o Next
 ```
 
-O `.env` é opcional: sem ele, o projeto usa o Postgres do `docker compose`. Para mudar a URL, copie o `.env.example` para `.env`.
+Abra <http://localhost:3000> e converse. O `.env.example` traz um exemplo de `MODELO` para cada provedor. Os testes não precisam de chave nem de `.env`: sem ele, usam o Postgres do `docker compose`.
+
+> No plano gratuito do Gemini, o Google pode usar as mensagens para melhorar os produtos dele. Por isso o chat avisa que as mensagens vão para um provedor de IA.
 
 | Comando | O que faz |
 | --- | --- |
@@ -89,15 +108,16 @@ O `.env` é opcional: sem ele, o projeto usa o Postgres do `docker compose`. Par
 | `pnpm typecheck` | Checa os tipos |
 | `pnpm test` | Testes em memória |
 | `pnpm test:db` | Testes contra o Postgres (num banco separado, com sufixo `_test`) |
+| `pnpm build` | Build de produção do Next |
 
-O `pnpm install` instala um pre-commit ([lefthook.yml](lefthook.yml)) que roda lint nos arquivos staged, typecheck e os testes em memória. O CI roda tudo isso, os testes com Postgres e confere se cada mudança no `schema.ts` veio com a sua migration.
+O `pnpm install` instala um pre-commit ([lefthook.yml](lefthook.yml)) que roda lint nos arquivos staged, typecheck e os testes em memória. O CI roda tudo isso, o build do Next, os testes com Postgres e confere se cada mudança no `schema.ts` veio com a sua migration.
 
 ---
 
 ## 🗺️ Roadmap
 
 - [x] **1. Catálogo:** modelagem dos dados, seed (40 pacotes em 7 destinos) e ferramentas testadas contra Postgres e memória
-- [ ] **2. Agente:** chat com streaming chamando as ferramentas
+- [x] **2. Agente:** chat com streaming chamando as ferramentas, cards de cotação, pré-reserva confirmada por botão e histórico de conversas
 - [ ] **3. RAG:** busca híbrida com citações de fonte
 - [ ] **4. Avaliação e proteções:** suíte de perguntas, métricas no CI, rate limit e testes de prompt injection
 - [ ] **5. Servidor MCP:** ferramentas expostas com permissões mínimas
