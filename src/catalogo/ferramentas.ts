@@ -47,7 +47,7 @@ export function criarFerramentas(operacoes: Operacoes): Ferramenta[] {
     {
       nome: "buscar_pacotes",
       descricao:
-        'Busca Pacotes do catálogo para um Grupo e devolve opções concretas e compráveis, cada uma uma Cotação. Use para pedidos como "4 dias em Gramado em julho, casal, até R$ 4 mil" ou buscas abertas ("algo até R$ 3 mil em março"). ' +
+        'Busca Pacotes do catálogo para um Grupo e devolve opções concretas e compráveis, cada uma uma Cotação. Use para pedidos como "4 dias em Gramado em julho, casal, até R$ 6 mil" ou buscas abertas ("algo até R$ 3 mil em março"). ' +
         `O grupo é obrigatório (adultos e idades das crianças; de ${IDADE_ADULTA} anos em diante, a pessoa conta como adulto). O destino (sem diferenciar maiúsculas nem acentos), a janela de datas em que a Saída começa e o orçamento são opcionais. ` +
         "O orçamento é o valor TOTAL do Grupo, não por pessoa, em centavos (R$ 4.000 = 400000). Sem destino, busca em todos; sem janela, de hoje até a última Saída. " +
         "Ficam só as Saídas futuras, com Vagas para o Grupo inteiro, dentro do orçamento e em Pacotes cuja Política de Crianças aceita o Grupo. " +

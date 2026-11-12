@@ -4,7 +4,7 @@
 
 Você descreve a viagem que tem na cabeça:
 
-> *"4 dias em Gramado em julho, casal, até R$ 4 mil"*
+> *"4 dias em Gramado em julho, casal, até R$ 6 mil"*
 
 E o assistente devolve **pacotes reais de um catálogo**, com preço e disponibilidade consultados na hora e a fonte de cada informação.
 

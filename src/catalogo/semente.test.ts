@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { criarBaseEmMemoria, semente } from ".";
+import { criarBaseEmMemoria, criarCatalogo, relogioFixo, semente } from ".";
 import type { PeriodoTarifario, Saida } from "./tipos";
 
 const { destinos, hoteis, pacotes, saidas, periodos } = semente;
@@ -176,6 +176,28 @@ describe("semente", () => {
     );
 
     expect(coberta).toBeDefined();
+  });
+
+  // The question shown in the README, in the chat placeholder and in the
+  // buscar_pacotes description. Whoever types it in the demo must see cards,
+  // so a seed change that empties this search has to change the example too.
+  it('traz Cotações para a pergunta de exemplo "4 dias em Gramado em julho, casal, até R$ 6 mil"', async () => {
+    // Asked before the Saídas start, "julho" is the July of the seed's year.
+    const catalogo = criarCatalogo({
+      base: criarBaseEmMemoria(semente),
+      relogio: relogioFixo("2026-12-01T09:00:00-03:00"),
+    });
+
+    const resultado = await catalogo.buscarPacotes({
+      destino: "Gramado",
+      janela: { inicio: "2027-07-01", fim: "2027-07-31" },
+      grupo: { adultos: 2 },
+      orcamento: 600000,
+    });
+    if (!resultado.ok) throw new Error(resultado.mensagem);
+
+    // "4 dias" are 3 noites: one of the cards has to be a trip of that length.
+    expect(resultado.cotacoes.map((c) => c.pacote.noites)).toContain(3);
   });
 
   it("tem temporadas altas em todos os Destinos", () => {

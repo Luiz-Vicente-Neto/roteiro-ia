@@ -198,7 +198,7 @@ export function Conversa({
           id="mensagem"
           value={texto}
           onChange={(e) => setTexto(e.currentTarget.value)}
-          placeholder="Ex.: 4 dias em Gramado em julho, casal, até R$ 4 mil"
+          placeholder="Ex.: 4 dias em Gramado em julho, casal, até R$ 6 mil"
           autoComplete="off"
           className="min-w-0 flex-1 rounded-full border border-stone-300 bg-white px-4 py-2"
         />
