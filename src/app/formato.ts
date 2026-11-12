@@ -42,6 +42,31 @@ export function dataCurta(data: string): string {
   return DATA_CURTA.format(new Date(`${data}T00:00:00Z`));
 }
 
+// Instants (a Proposta's validity, a Pré-reserva's hold) are shown in
+// São Paulo time, the catalog's, whatever the browser's zone.
+const HORA = new Intl.DateTimeFormat("pt-BR", {
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "America/Sao_Paulo",
+});
+const DIA_E_HORA = new Intl.DateTimeFormat("pt-BR", {
+  day: "numeric",
+  month: "short",
+  hour: "2-digit",
+  minute: "2-digit",
+  timeZone: "America/Sao_Paulo",
+});
+
+/** An ISO instant as São Paulo's "09:15". */
+export function hora(instante: string): string {
+  return HORA.format(new Date(instante));
+}
+
+/** An ISO instant as São Paulo's "2 de dez., 09:10". */
+export function diaEHora(instante: string): string {
+  return DIA_E_HORA.format(new Date(instante));
+}
+
 function plural(n: number, um: string, varios: string): string {
   return `${n} ${n === 1 ? um : varios}`;
 }

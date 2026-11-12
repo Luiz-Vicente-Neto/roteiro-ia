@@ -4,7 +4,7 @@ export {
   conferirCatalogo,
   criarBaseEmMemoria,
 } from "./base";
-export { criarCatalogo } from "./catalogo";
+export { type Catalogo, criarCatalogo } from "./catalogo";
 export type { CodigoDeErro, Falha } from "./erros";
 export type { Ferramenta, ResultadoDeFerramenta } from "./ferramentas";
 export type { Cotacao } from "./preco";

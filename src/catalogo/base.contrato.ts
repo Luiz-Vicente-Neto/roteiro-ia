@@ -348,6 +348,26 @@ export function testarContratoDaBase(nome: string, criarBase: CriarBase) {
         });
       });
 
+      it("lê a Pré-reserva feita a partir de uma Proposta, e undefined para uma Proposta ainda sem Pré-reserva", async () => {
+        const base = await criarBase(dados);
+        const confirmada = await comProposta(base, 1);
+        const pendente = await comProposta(base, 1);
+        const preReserva = {
+          ...preReservaDe(confirmada, "RT-HJ45"),
+          grupo: { adultos: 1, criancas: [7, 0] },
+        };
+        await base.criarPreReserva({
+          idDaProposta: confirmada.id,
+          preReserva,
+          agora,
+        });
+
+        expect(await base.lerPreReservaDaProposta(confirmada.id)).toEqual(
+          preReserva,
+        );
+        expect(await base.lerPreReservaDaProposta(pendente.id)).toBeUndefined();
+      });
+
       it("recusa com VAGAS_INSUFICIENTES o Grupo que não cabe, sem gravar nada nem confirmar a Proposta", async () => {
         const base = await criarBase(dados);
         const primeira = await comProposta(base, 3);

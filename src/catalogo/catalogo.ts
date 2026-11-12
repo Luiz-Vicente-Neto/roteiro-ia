@@ -305,9 +305,50 @@ export function criarCatalogo({
     );
   }
 
+  /**
+   * Where the Proposta `idDaProposta` stands right now, for the screen that
+   * shows it: still valid (until when), expired, or confirmed (with its
+   * Pré-reserva). Not one of the ferramentas: the model learns of a
+   * confirmation from the Conversa's Eventos.
+   */
+  async function situacaoDaProposta(idDaProposta: string) {
+    const proposta = await base.lerProposta(idDaProposta);
+    if (!proposta) {
+      return falha(
+        "PROPOSTA_INEXISTENTE",
+        "Esta Proposta não existe. Peça uma nova Proposta na conversa.",
+      );
+    }
+    if (proposta.confirmada) {
+      const preReserva = await base.lerPreReservaDaProposta(idDaProposta);
+      if (!preReserva) {
+        throw new Error(`Proposta ${idDaProposta} confirmada sem Pré-reserva`);
+      }
+      return {
+        ok: true as const,
+        situacao: "confirmada" as const,
+        preReserva: {
+          codigo: preReserva.codigo,
+          expiraEm: preReserva.expiraEm.toISOString(),
+        },
+      };
+    }
+    if (proposta.expiraEm <= relogio.agora()) {
+      return { ok: true as const, situacao: "expirada" as const };
+    }
+    return {
+      ok: true as const,
+      situacao: "valida" as const,
+      expiraEm: proposta.expiraEm.toISOString(),
+    };
+  }
+
   return {
     ...operacoes,
     confirmarPreReserva,
+    situacaoDaProposta,
     ferramentas: criarFerramentas(operacoes),
   };
 }
+
+export type Catalogo = ReturnType<typeof criarCatalogo>;

@@ -50,6 +50,13 @@
       "when": 1794505465852,
       "tag": "0006_conversas",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1794508227780,
+      "tag": "0007_pre-reserva-da-proposta",
+      "breakpoints": true
     }
   ]
 }

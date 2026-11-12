@@ -3,13 +3,28 @@
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, isToolUIPart, type UIMessage } from "ai";
 import { useRouter } from "next/navigation";
-import { type FormEvent, useEffect, useRef, useState } from "react";
+import {
+  type FormEvent,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
+import type { EventoDaConversa } from "@/assistente/base";
 import {
   ASSISTENTE_INDISPONIVEL,
   COMECE_UMA_NOVA_CONVERSA,
   CONVERSA_CHEIA,
 } from "@/assistente/mensagens";
-import { cardsDaResposta, chamadasDaResposta } from "@/assistente/resposta";
+import {
+  cardsDaResposta,
+  chamadasDaResposta,
+  type EstadoDaProposta,
+  type PropostaDoCard,
+  propostasDaResposta,
+} from "@/assistente/resposta";
+import { confirmarProposta, descartarProposta } from "./acoes";
+import { CardDeProposta, type EstadoDoCard, LinhaDeEvento } from "./proposta";
 import { CardsDeCotacao, PainelDeChamadas } from "./resposta";
 
 /** Sends only the new text: the server holds the Conversa's history. */
@@ -37,10 +52,20 @@ function conversaDa(mensagem: UIMessage | undefined): string | undefined {
 export function Conversa({
   conversa,
   mensagens = [],
+  eventos: eventosIniciais = [],
+  estados: estadosIniciais = {},
 }: {
   conversa?: string;
   mensagens?: UIMessage[];
+  eventos?: EventoDaConversa[];
+  /** Each Proposta's state when the page was read, by id. */
+  estados?: Record<string, EstadoDaProposta>;
 }) {
+  // Eventos and states the Viajante's clicks add, on top of the page's.
+  const [eventos, setEventos] = useState(eventosIniciais);
+  const [estados, setEstados] =
+    useState<Record<string, EstadoDoCard>>(estadosIniciais);
+  const [emAndamento, iniciar] = useTransition();
   const [texto, setTexto] = useState("");
   const idDaConversa = useRef(conversa);
   const [transport] = useState(() => transporte(idDaConversa));
@@ -76,6 +101,36 @@ export function Conversa({
   }, [messages]);
   const ocupado = status === "submitted" || status === "streaming";
 
+  /** A click on a Proposta's card: the Server Action answers its new state and Evento. */
+  function aoClicar(proposta: string, acao: "confirmar" | "descartar") {
+    const id = idDaConversa.current;
+    if (!id) return;
+    iniciar(async () => {
+      let novo: EstadoDoCard;
+      let evento: EventoDaConversa | undefined;
+      if (acao === "confirmar") {
+        const resultado = await confirmarProposta(id, proposta);
+        if (resultado.ok) {
+          const { codigo, expiraEm } = resultado.preReserva;
+          novo = { estado: "confirmada", codigo, bloqueadaAte: expiraEm };
+          evento = resultado.evento;
+        } else {
+          novo = { estado: "erro", mensagem: resultado.mensagem };
+        }
+      } else {
+        const resultado = await descartarProposta(id, proposta);
+        if (resultado.ok) {
+          novo = { estado: "descartada" };
+          evento = resultado.evento;
+        } else {
+          novo = { estado: "erro", mensagem: resultado.mensagem };
+        }
+      }
+      setEstados((atuais) => ({ ...atuais, [proposta]: novo }));
+      if (evento) setEventos((atuais) => [...atuais, evento]);
+    });
+  }
+
   function enviar(evento: FormEvent<HTMLFormElement>) {
     evento.preventDefault();
     const mensagem = texto.trim();
@@ -96,7 +151,14 @@ export function Conversa({
               {textoDe(mensagem)}
             </li>
           ) : (
-            <RespostaDoAssistente key={mensagem.id} mensagem={mensagem} />
+            <RespostaDoAssistente
+              key={mensagem.id}
+              mensagem={mensagem}
+              eventos={eventos}
+              estados={estados}
+              ocupado={emAndamento}
+              aoClicar={aoClicar}
+            />
           ),
         )}
         {status === "submitted" && (
@@ -163,11 +225,37 @@ function textoDe(mensagem: UIMessage | undefined): string {
     .join("");
 }
 
+/** A Proposta just made has no state from the page yet: it is valid until its expiry. */
+function estadoDe(
+  proposta: PropostaDoCard,
+  estados: Record<string, EstadoDoCard>,
+): EstadoDoCard {
+  return (
+    estados[proposta.id] ?? { estado: "valida", expiraEm: proposta.expiraEm }
+  );
+}
+
 /**
- * The Assistente's text in its bubble, then the Cotação cards and the panel.
- * The cards' numbers come from the tool results, never from the text.
+ * The Assistente's text in its bubble, then the Cotação cards, the Proposta
+ * cards with the Eventos about them, and the panel. The cards' numbers come
+ * from the tool results, never from the text.
  */
-function RespostaDoAssistente({ mensagem }: { mensagem: UIMessage }) {
+function RespostaDoAssistente({
+  mensagem,
+  eventos,
+  estados,
+  ocupado,
+  aoClicar,
+}: {
+  mensagem: UIMessage;
+  eventos: EventoDaConversa[];
+  estados: Record<string, EstadoDoCard>;
+  ocupado: boolean;
+  aoClicar(proposta: string, acao: "confirmar" | "descartar"): void;
+}) {
+  const propostas = propostasDaResposta(mensagem);
+  const ids = new Set(propostas.map((p) => p.id));
+  const sobreEstas = eventos.filter((e) => ids.has(e.evento.idDaProposta));
   const texto = textoDe(mensagem);
   const consultando = mensagem.parts.some(
     (p) =>
@@ -188,6 +276,19 @@ function RespostaDoAssistente({ mensagem }: { mensagem: UIMessage }) {
         </p>
       )}
       <CardsDeCotacao cards={cardsDaResposta(mensagem)} />
+      {propostas.map((p) => (
+        <CardDeProposta
+          key={p.id}
+          proposta={p}
+          estado={estadoDe(p, estados)}
+          ocupado={ocupado}
+          aoConfirmar={() => aoClicar(p.id, "confirmar")}
+          aoDescartar={() => aoClicar(p.id, "descartar")}
+        />
+      ))}
+      {sobreEstas.map((e) => (
+        <LinhaDeEvento key={e.id} evento={e.evento} />
+      ))}
       <PainelDeChamadas chamadas={chamadasDaResposta(mensagem)} />
     </li>
   );

@@ -7,6 +7,7 @@ import {
   type DadosDoCatalogo,
   type FaixaDeIdade,
   type PeriodoTarifario,
+  type PreReserva,
   type Proposta,
   vagasDoGrupo,
 } from "../catalogo";
@@ -131,6 +132,14 @@ export function criarBasePostgres(db: Db): BaseDoCatalogo {
         .orderBy(byCodePoint(preReservas.pacote), preReservas.data);
     },
 
+    async lerPreReservaDaProposta(idDaProposta) {
+      const [row] = await db
+        .select()
+        .from(preReservas)
+        .where(eq(preReservas.proposta, idDaProposta));
+      return row && paraPreReserva(row);
+    },
+
     async criarPreReserva({ idDaProposta, preReserva, agora }) {
       const { grupo, ...campos } = preReserva;
       const { pacote, data } = preReserva;
@@ -177,7 +186,7 @@ export function criarBasePostgres(db: Db): BaseDoCatalogo {
         // now on another Saída, inserts nothing, so nothing is written.
         const [inserida] = await tx
           .insert(preReservas)
-          .values({ ...campos, ...grupo })
+          .values({ ...campos, ...grupo, proposta: idDaProposta })
           .onConflictDoNothing({ target: preReservas.codigo })
           .returning({ codigo: preReservas.codigo });
         if (!inserida) return { ok: false, motivo: "CODIGO_EM_USO" } as const;
@@ -215,6 +224,20 @@ function paraProposta(row: typeof propostas.$inferSelect): Proposta {
     criadaEm,
     expiraEm,
     confirmada,
+  };
+}
+
+function paraPreReserva(row: typeof preReservas.$inferSelect): PreReserva {
+  const { codigo, pacote, data, adultos, criancas, total, criadaEm, expiraEm } =
+    row;
+  return {
+    codigo,
+    pacote,
+    data,
+    grupo: { adultos, criancas },
+    total,
+    criadaEm,
+    expiraEm,
   };
 }
 

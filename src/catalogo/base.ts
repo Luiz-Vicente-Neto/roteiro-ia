@@ -29,6 +29,10 @@ export interface BaseDoCatalogo {
   lerProposta(id: string): Promise<Proposta | undefined>;
   /** Vagas held on each Saída by the Pré-reservas still active at `agora` (`expiraEm` after it). Saídas with none are left out. */
   lerVagasOcupadas(agora: Date): Promise<VagasOcupadas[]>;
+  /** The Pré-reserva made from the Proposta `idDaProposta`, expired or not, or undefined if none was made. */
+  lerPreReservaDaProposta(
+    idDaProposta: string,
+  ): Promise<PreReserva | undefined>;
   /**
    * Atomically: checks that the Proposta `idDaProposta` (which must exist) is
    * not confirmed yet, that `preReserva.codigo` is unused, and that the Grupo
@@ -138,6 +142,8 @@ export function criarBaseEmMemoria(dados: DadosDoCatalogo): BaseDoCatalogo {
   const catalogo = ordenarCatalogo(structuredClone(dados));
   const propostas = new Map<string, Proposta>();
   const preReservas = new Map<string, PreReserva>();
+  // The código of the Pré-reserva made from each confirmed Proposta.
+  const codigoDaProposta = new Map<string, string>();
   const ativas = (agora: Date) =>
     [...preReservas.values()].filter((p) => p.expiraEm > agora);
   return {
@@ -160,6 +166,11 @@ export function criarBaseEmMemoria(dados: DadosDoCatalogo): BaseDoCatalogo {
         porSaida.set(chave, ocupadas);
       }
       return [...porSaida.values()];
+    },
+    async lerPreReservaDaProposta(idDaProposta) {
+      const codigo = codigoDaProposta.get(idDaProposta);
+      const preReserva = codigo && preReservas.get(codigo);
+      return preReserva ? structuredClone(preReserva) : undefined;
     },
     // Nothing is awaited in here, so no other call can run in between: that
     // is what makes it atomic in memory.
@@ -185,6 +196,7 @@ export function criarBaseEmMemoria(dados: DadosDoCatalogo): BaseDoCatalogo {
         return { ok: false, motivo: "VAGAS_INSUFICIENTES", vagasRestantes };
       }
       preReservas.set(preReserva.codigo, structuredClone(preReserva));
+      codigoDaProposta.set(idDaProposta, preReserva.codigo);
       proposta.confirmada = true;
       return { ok: true };
     },

@@ -14,6 +14,10 @@ export const CONVERSA_CHEIA = "CONVERSA_CHEIA";
 export const COMECE_UMA_NOVA_CONVERSA =
   "Esta Conversa chegou ao limite de mensagens. Comece uma nova Conversa para continuar.";
 
+/** What a click on a Proposta's card answers when the Proposta is not this dono's, or no longer exists. */
+export const PROPOSTA_INEXISTENTE =
+  "Esta Proposta não existe. Peça uma nova Proposta na conversa.";
+
 /**
  * What the panel shows for a tool call the SDK could not run (an unknown
  * tool, say). The catalog's own refusals come back as results instead.

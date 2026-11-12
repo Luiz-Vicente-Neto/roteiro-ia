@@ -78,6 +78,40 @@ export function cardDetalhado(card: CotacaoDoCard): boolean {
   return !("outrasSaidas" in card);
 }
 
+/** A Proposta of an answer, as propor_pre_reserva gave it to the model. */
+export interface PropostaDoCard {
+  id: string;
+  cotacao: Cotacao;
+  /** ISO instant until which it can be confirmed. */
+  expiraEm: string;
+}
+
+/**
+ * Where a Proposta's card stands, always read again from the catalog and the
+ * Conversa's Eventos, never stored in the message. "erro" is not here: it is
+ * only the answer to a click that failed.
+ */
+export type EstadoDaProposta =
+  | { estado: "valida"; expiraEm: string }
+  | { estado: "expirada" }
+  | { estado: "descartada" }
+  /** `bloqueadaAte`: ISO instant until which the Pré-reserva holds the Vagas. */
+  | { estado: "confirmada"; codigo: string; bloqueadaAte: string };
+
+/**
+ * The Propostas the model made in `mensagem`, one card each, read from the
+ * tool results. Their state is not here: it is always read again from the
+ * catalog (see EstadoDaProposta).
+ */
+export function propostasDaResposta(mensagem: UIMessage): PropostaDoCard[] {
+  return chamadasDaResposta(mensagem).flatMap((chamada) => {
+    if (!chamada.ok || chamada.ferramenta !== "propor_pre_reserva") return [];
+    // The catalog is the only source of this result (see catalogo/catalogo.ts).
+    const { id, cotacao, expiraEm } = chamada.saida as PropostaDoCard;
+    return [{ id, cotacao, expiraEm }];
+  });
+}
+
 function deuCerto(saida: unknown): boolean {
   return (
     typeof saida === "object" &&

@@ -5,13 +5,16 @@ export {
   type ConversaDaLista,
   type ConversaNaoExiste,
   criarAssistente,
+  eventosDe,
   mensagensDe,
+  propostaInexistente,
 } from "./assistente";
 export {
   type BaseDeConversas,
   type Conversa,
   criarBaseDeConversasEmMemoria,
   type Evento,
+  type EventoDaConversa,
   type ItemDaConversa,
 } from "./base";
 export {
@@ -27,4 +30,7 @@ export {
   cardsDaResposta,
   chamadasDaResposta,
   chaveDoCard,
+  type EstadoDaProposta,
+  type PropostaDoCard,
+  propostasDaResposta,
 } from "./resposta";

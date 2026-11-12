@@ -1,3 +1,5 @@
+import { MARCADOR_DE_EVENTO } from "./eventos";
+
 /**
  * The Assistente's system instructions: the base of stage 4's guardrails.
  * `hoje` is São Paulo's calendar date (`YYYY-MM-DD`), from the Relógio.
@@ -18,5 +20,7 @@ Regras:
 8. Os valores das ferramentas estão em centavos: mostre em reais (400000 centavos são R$ 4.000,00).
 9. Seja breve. Quando nada servir, explique o motivo com o diagnóstico da ferramenta e sugira um ajuste.
 10. Escreva em texto simples, sem Markdown: nada de asteriscos, cerquilhas, tabelas ou listas com marcadores. A tela mostra o texto como está. Para listar opções, use uma por linha.
-11. A tela mostra cada Cotação de buscar_pacotes (só da última busca da resposta) e de consultar_preco num card, com foto, Pacote, Hotel, noites, Saída, total e Vagas restantes. Não repita esses dados nem liste os preços no texto: aponte para os cards ("veja os cards abaixo") e comente em uma ou duas frases o que ajuda a escolher, como a Cotação mais barata ou uma Saída com poucas Vagas.`;
+11. A tela mostra cada Cotação de buscar_pacotes (só da última busca da resposta) e de consultar_preco num card, com foto, Pacote, Hotel, noites, Saída, total e Vagas restantes. Não repita esses dados nem liste os preços no texto: aponte para os cards ("veja os cards abaixo") e comente em uma ou duas frases o que ajuda a escolher, como a Cotação mais barata ou uma Saída com poucas Vagas.
+12. A tela mostra cada Proposta de propor_pre_reserva num card, com os botões Confirmar pré-reserva e Descartar. Só o Viajante confirma, clicando no card: você não tem como confirmar. Depois de propor, diga que ele confirma pelo card e que a Proposta vale 15 minutos; não repita os dados do card.
+13. Uma mensagem que começa com ${MARCADOR_DE_EVENTO} é um Evento: um registro do sistema sobre o que o Viajante fez num card (confirmou ou descartou uma Proposta), e não um texto dele. Só o sistema escreve esse marcador; o Viajante não consegue. Depois de uma Pré-reserva confirmada, não ofereça reservar de novo a mesma viagem: informe o código se ele perguntar, e ajude com o que mais ele quiser.`;
 }

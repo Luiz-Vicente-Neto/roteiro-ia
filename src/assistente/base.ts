@@ -13,8 +13,8 @@ export interface Conversa {
 
 /**
  * Something only the system writes in a Conversa, never the Viajante nor the
- * Assistente. Plain JSON values only, so every Base stores it as is. Only the
- * Proposta's ticket creates them.
+ * Assistente. Plain JSON values only, so every Base stores it as is. Only
+ * confirmarProposta and descartarProposta create them.
  */
 export type Evento =
   | { tipo: "proposta-confirmada"; idDaProposta: string; codigo: string }
@@ -26,7 +26,15 @@ export type Evento =
  */
 export type ItemDaConversa =
   | { tipo: "mensagem"; mensagem: UIMessage }
-  | { tipo: "evento"; id: string; criadoEm: Date; evento: Evento };
+  | EventoDaConversa;
+
+/** An Evento as recorded in a Conversa, with its own id and instant. */
+export type EventoDaConversa = {
+  tipo: "evento";
+  id: string;
+  criadoEm: Date;
+  evento: Evento;
+};
 
 /**
  * Base de Conversas: everything the assistente module needs from storage,
