@@ -50,6 +50,28 @@ A maioria dos chatbots com IA responde de memória e, às vezes, inventa. O Rote
 
 ---
 
+## 💻 Rodando localmente
+
+Pré-requisitos: Node 24, pnpm e Docker.
+
+```bash
+pnpm install
+pnpm dev        # sobe o Postgres, aplica as migrations, roda o seed (se o banco estiver vazio) e inicia o Next
+```
+
+O `.env` é opcional: sem ele, o projeto usa o Postgres do `docker compose`. Para mudar a URL, copie o `.env.example` para `.env`.
+
+| Comando | O que faz |
+| --- | --- |
+| `pnpm db:reset` | Recria o banco do zero e roda o seed |
+| `pnpm db:generate` | Gera uma migration a partir do esquema do Drizzle |
+| `pnpm lint` / `pnpm format` | Confere / corrige lint e formatação (Biome) |
+| `pnpm typecheck` | Checa os tipos |
+| `pnpm test` | Testes em memória |
+| `pnpm test:db` | Testes contra o Postgres (num banco separado, com sufixo `_test`) |
+
+---
+
 ## 🗺️ Roadmap
 
 - [ ] **1. Catálogo:** modelagem dos dados, script de seed (30–50 pacotes em 6–8 destinos) e ferramentas testadas
