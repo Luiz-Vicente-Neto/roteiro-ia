@@ -8,7 +8,7 @@ Você descreve a viagem que tem na cabeça:
 
 E o assistente devolve **pacotes reais de um catálogo**, com preço e disponibilidade consultados na hora e a fonte de cada informação.
 
-> 🚧 **Em construção.** Este repositório está nascendo agora. Acompanhe o progresso no [roadmap](#-roadmap) abaixo.
+> 🚧 **Em construção.** A etapa 1 (catálogo e ferramentas testadas) está pronta. O chat com IA é a próxima. Acompanhe no [roadmap](#-roadmap) abaixo.
 
 ---
 
@@ -25,28 +25,48 @@ A maioria dos chatbots com IA responde de memória e, às vezes, inventa. O Rote
 
 ---
 
-## 🧱 Stack planejada
+## 🧱 Stack
 
-| Camada | Tecnologia |
-| --- | --- |
-| Front-end e back-end | Next.js · TypeScript · Tailwind CSS |
-| Banco de dados | Postgres (Supabase) + pgvector |
-| Modelo de linguagem | Claude API com *tool use* |
-| Integração externa | Servidor MCP (SDK oficial em TypeScript) |
-| Deploy | Vercel |
-| Qualidade | Testes automatizados + GitHub Actions |
+| Camada | Tecnologia | Status |
+| --- | --- | --- |
+| Front-end e back-end | Next.js · TypeScript · Tailwind CSS | ✅ |
+| Banco de dados | Postgres + pgvector (`docker compose` local) · Drizzle ORM | ✅ |
+| Qualidade | Vitest · Biome · pre-commit (Lefthook) · GitHub Actions | ✅ |
+| Modelo de linguagem | Claude API com *tool use* | 🔜 |
+| Integração externa | Servidor MCP (SDK oficial em TypeScript) | 🔜 |
+| Deploy | Vercel + Supabase | 🔜 |
+
+---
+
+## 🗂️ O catálogo
+
+Um catálogo fictício, escrito à mão e determinístico (nenhuma linha gerada por IA), com saídas semanais ao longo de 2027:
+
+- **7 destinos:** Gramado, Campos do Jordão, Bonito, Foz do Iguaçu, Porto de Galinhas, Jericoacoara e Lençóis Maranhenses;
+- **19 hotéis** e **40 pacotes**;
+- **Períodos tarifários** (alta temporada, feriados) que ajustam o preço da baixa temporada, com regra clara de qual vence quando dois cobrem a mesma data;
+- **Política de crianças** por pacote: faixas de idade com percentual do preço de adulto, ou pacotes que não aceitam crianças;
+- **Vagas por saída**, incluindo saídas quase lotadas para testar os casos de borda.
+
+O mesmo catálogo alimenta o Postgres (pelo seed) e uma base em memória usada nos testes, então os dois têm sempre exatamente os mesmos dados.
 
 ---
 
 ## 🛠️ Ferramentas do agente
 
-| Ferramenta | O que faz |
-| --- | --- |
-| `buscar_pacotes` | Encontra pacotes por destino, datas, número de pessoas e orçamento |
-| `consultar_preco` | Calcula o preço de um pacote para uma data e quantidade de pessoas |
-| `verificar_disponibilidade` | Confere as vagas de uma data de saída |
-| `buscar_politicas` | Busca semântica (RAG) em políticas, FAQs e descrições |
-| `criar_pre_reserva` | Cria uma pré-reserva, **sempre com confirmação da pessoa antes** |
+As ferramentas vivem num único módulo ([src/catalogo/](src/catalogo/)), sem dependência de Next.js nem do banco: ele fala com uma *base do catálogo* trocável (Postgres ou memória). O chat e o servidor MCP vão usar essa mesma lista, sem duplicação.
+
+| Ferramenta | O que faz | Status |
+| --- | --- | --- |
+| `buscar_pacotes` | Encontra pacotes por grupo (adultos e idades das crianças), destino, janela de datas e orçamento total. Quando nada serve, explica o porquê (vagas, orçamento, política de crianças) | ✅ |
+| `consultar_preco` | Calcula o preço de um pacote numa data de saída para um grupo, pessoa por pessoa, mostrando o período tarifário aplicado | ✅ |
+| `verificar_disponibilidade` | Informa as vagas restantes de uma saída | ✅ |
+| `propor_pre_reserva` | Prepara uma proposta de pré-reserva, válida por 15 minutos. **Não reserva nem bloqueia vagas** | ✅ |
+| `buscar_politicas` | Busca semântica (RAG) em políticas, FAQs e descrições | 🔜 |
+
+**Por que o modelo não confirma a reserva?** A confirmação não é uma ferramenta: só a pessoa confirma a proposta, por um caminho fora da conversa com o modelo. Ao confirmar, as vagas são bloqueadas de forma atômica no banco, então duas confirmações simultâneas nunca vendem a mesma vaga.
+
+Entradas inválidas do modelo voltam como erro estruturado (com sugestões, como as saídas mais próximas), nunca como exceção.
 
 ---
 
@@ -76,7 +96,7 @@ O `pnpm install` instala um pre-commit ([lefthook.yml](lefthook.yml)) que roda l
 
 ## 🗺️ Roadmap
 
-- [ ] **1. Catálogo:** modelagem dos dados, script de seed (30–50 pacotes em 6–8 destinos) e ferramentas testadas
+- [x] **1. Catálogo:** modelagem dos dados, seed (40 pacotes em 7 destinos) e ferramentas testadas contra Postgres e memória
 - [ ] **2. Agente:** chat com streaming chamando as ferramentas
 - [ ] **3. RAG:** busca híbrida com citações de fonte
 - [ ] **4. Avaliação e proteções:** suíte de perguntas, métricas no CI, rate limit e testes de prompt injection
