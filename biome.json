@@ -28,7 +28,7 @@
   },
   "overrides": [
     {
-      "includes": ["src/catalogo/**"],
+      "includes": ["src/catalogo/**", "src/assistente/**"],
       "linter": {
         "rules": {
           "style": {
@@ -38,7 +38,7 @@
                 "patterns": [
                   {
                     "group": ["next", "next/**", "react", "react/**"],
-                    "message": "O módulo catalogo é independente de framework: não importe o Next."
+                    "message": "Os módulos catalogo e assistente são independentes de framework: não importe o Next."
                   },
                   {
                     "group": [

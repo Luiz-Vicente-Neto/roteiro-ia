@@ -23,6 +23,12 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "4.0.102",
+    "@ai-sdk/google": "4.0.117",
+    "@ai-sdk/openai": "4.0.114",
+    "@ai-sdk/react": "4.0.173",
+    "@ai-sdk/xai": "5.0.43",
+    "ai": "7.0.169",
     "drizzle-orm": "0.45.4",
     "next": "16.4.6",
     "postgres": "4.1.1",
