@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { criarBaseEmMemoria, criarCatalogo, relogioFixo, semente } from ".";
+import { criarBaseEmMemoria, criarCatalogo, relogioFixo } from ".";
+import { catalogoDeTeste } from "./catalogo-de-teste";
 
 const catalogo = criarCatalogo({
-  base: criarBaseEmMemoria(semente),
+  base: criarBaseEmMemoria(catalogoDeTeste),
   relogio: relogioFixo("2026-12-01T09:00:00-03:00"),
 });
 

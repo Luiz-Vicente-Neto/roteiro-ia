@@ -1,8 +1,9 @@
 import { afterAll, expect, inject, it } from "vitest";
-import { criarCatalogo, relogioFixo, semente } from "../catalogo";
+import { criarCatalogo, relogioFixo } from "../catalogo";
 import { testarContratoDaBase } from "../catalogo/base.contrato";
 import { criarBasePostgres, substituirCatalogo } from "./base-postgres";
 import { createDb } from "./client";
+import { seed } from "./seed";
 
 const db = createDb(inject("databaseUrl"));
 
@@ -14,7 +15,7 @@ testarContratoDaBase("Postgres", async (dados) => {
 });
 
 it("o catálogo responde verificarDisponibilidade com a Base em Postgres carregada pelo seed", async () => {
-  await substituirCatalogo(db, semente);
+  await seed(db);
   const catalogo = criarCatalogo({
     base: criarBasePostgres(db),
     relogio: relogioFixo("2026-12-01T09:00:00-03:00"),

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { BaseDoCatalogo } from "./base";
+import { semente } from "./semente";
 import type { DadosDoCatalogo } from "./tipos";
 
 /** Builds a Base do Catálogo holding exactly `dados`, empty of anything else. */
@@ -203,6 +204,49 @@ export function testarContratoDaBase(nome: string, criarBase: CriarBase) {
           saidas: [],
         }),
       ).rejects.toThrow(/campos-chateau-montanha-2n/);
+    });
+
+    it("carregada com a semente, enxerga o catálogo completo: as mesmas contagens e os mesmos dados numa amostra", async () => {
+      const base = await criarBase(semente);
+
+      const catalogo = await base.lerCatalogo();
+
+      const contagens = (dados: DadosDoCatalogo) => ({
+        destinos: dados.destinos.length,
+        hoteis: dados.hoteis.length,
+        pacotes: dados.pacotes.length,
+        saidas: dados.saidas.length,
+        periodos: dados.periodos.length,
+      });
+      expect(contagens(catalogo)).toEqual(contagens(semente));
+      const amostra = {
+        destino: semente.destinos.find((d) => d.slug === "lencois-maranhenses"),
+        hotelComPet: semente.hoteis.find((h) => h.aceitaPet),
+        pacoteSemCriancas: semente.pacotes.find(
+          (p) => !p.politicaDeCriancas.aceitaCriancas,
+        ),
+        pacoteComFaixas: semente.pacotes.find(
+          (p) => p.politicaDeCriancas.aceitaCriancas,
+        ),
+        saidaComPoucasVagas: semente.saidas.find((s) => s.vagasTotais === 1),
+        ultimaSaida: semente.saidas.at(-1),
+        feriado: semente.periodos.find((p) => p.nome === "Carnaval"),
+        temporada: semente.periodos.find(
+          (p) => p.nome === "Festival de Inverno",
+        ),
+      };
+      // A sample the seed no longer has would compare against undefined.
+      expect(
+        Object.entries(amostra).filter(([, valor]) => valor === undefined),
+      ).toEqual([]);
+      expect(catalogo.destinos).toContainEqual(amostra.destino);
+      expect(catalogo.hoteis).toContainEqual(amostra.hotelComPet);
+      expect(catalogo.pacotes).toContainEqual(amostra.pacoteSemCriancas);
+      expect(catalogo.pacotes).toContainEqual(amostra.pacoteComFaixas);
+      expect(catalogo.saidas).toContainEqual(amostra.saidaComPoucasVagas);
+      expect(catalogo.saidas).toContainEqual(amostra.ultimaSaida);
+      expect(catalogo.periodos).toContainEqual(amostra.feriado);
+      expect(catalogo.periodos).toContainEqual(amostra.temporada);
     });
 
     it("lê um catálogo vazio", async () => {

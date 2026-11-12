@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { criarBaseEmMemoria, criarCatalogo, relogioFixo, semente } from ".";
+import { criarBaseEmMemoria, criarCatalogo, relogioFixo } from ".";
+import { catalogoDeTeste } from "./catalogo-de-teste";
 
 const HOJE = "2026-12-01T09:00:00-03:00";
 
 function catalogoEm(instante: string) {
   return criarCatalogo({
-    base: criarBaseEmMemoria(semente),
+    base: criarBaseEmMemoria(catalogoDeTeste),
     relogio: relogioFixo(instante),
   });
 }
