@@ -21,6 +21,8 @@ export interface Pacote {
   hotel: string;
   noites: number;
   inclui: string[];
+  /** Price per adult in baixa temporada, in centavos (a multiple of 100). */
+  precoBase: number;
 }
 
 export interface Saida {
@@ -31,9 +33,33 @@ export interface Saida {
   vagasTotais: number;
 }
 
+interface PeriodoBase {
+  nome: string;
+  /** First day it covers, `YYYY-MM-DD`, inclusive. */
+  inicio: string;
+  /** Last day it covers, `YYYY-MM-DD`, inclusive. */
+  fim: string;
+  /** Multiplies the Preço base of the Saídas that start inside it (e.g. 1.35). */
+  fator: number;
+}
+
+/**
+ * Período Tarifário: a temporada counts only for the Pacotes of its Destino,
+ * a feriado nacional for every Pacote. A feriado covers the window of Saídas
+ * around the long weekend, not just the day itself.
+ */
+export type PeriodoTarifario =
+  | (PeriodoBase & {
+      tipo: "temporada";
+      /** Slug of the Destino. */
+      destino: string;
+    })
+  | (PeriodoBase & { tipo: "feriado" });
+
 /**
  * The whole catalog as read from a Base do Catálogo.
- * Lists come ordered by slug, and Saídas by Pacote then date, so every
+ * Lists come ordered by slug, Saídas by Pacote then date, and Períodos by
+ * start date, then name, then Destino (feriados first), so every
  * implementation returns the same catalog in the same order.
  */
 export interface DadosDoCatalogo {
@@ -41,4 +67,5 @@ export interface DadosDoCatalogo {
   hoteis: Hotel[];
   pacotes: Pacote[];
   saidas: Saida[];
+  periodos: PeriodoTarifario[];
 }

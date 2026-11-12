@@ -15,6 +15,13 @@
       "when": 1794488014923,
       "tag": "0001_cria-catalogo",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794488782991,
+      "tag": "0002_periodos-tarifarios",
+      "breakpoints": true
     }
   ]
 }

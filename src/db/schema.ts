@@ -7,6 +7,7 @@ import {
   check,
   date,
   integer,
+  numeric,
   pgTable,
   primaryKey,
   text,
@@ -36,8 +37,16 @@ export const pacotes = pgTable(
       .references(() => hoteis.slug),
     noites: integer().notNull(),
     inclui: text().array().notNull(),
+    // Centavos, always whole reais.
+    precoBase: integer("preco_base").notNull(),
   },
-  (t) => [check("pacotes_noites_positivas", sql`${t.noites} > 0`)],
+  (t) => [
+    check("pacotes_noites_positivas", sql`${t.noites} > 0`),
+    check(
+      "pacotes_preco_base_em_reais_inteiros",
+      sql`${t.precoBase} > 0 and ${t.precoBase} % 100 = 0`,
+    ),
+  ],
 );
 
 export const saidas = pgTable(
@@ -53,5 +62,36 @@ export const saidas = pgTable(
   (t) => [
     primaryKey({ columns: [t.pacote, t.data] }),
     check("saidas_vagas_nao_negativas", sql`${t.vagasTotais} >= 0`),
+  ],
+);
+
+export const periodosTarifarios = pgTable(
+  "periodos_tarifarios",
+  {
+    // Storage-only key: the domain identifies a Período by its fields.
+    id: integer().primaryKey().generatedAlwaysAsIdentity(),
+    nome: text().notNull(),
+    tipo: text({ enum: ["temporada", "feriado"] }).notNull(),
+    // Set only for a temporada; a feriado nacional counts for every Destino.
+    destino: text().references(() => destinos.slug),
+    inicio: date({ mode: "string" }).notNull(),
+    fim: date({ mode: "string" }).notNull(),
+    // Two decimals, so the price rule can multiply on integers.
+    fator: numeric({ precision: 4, scale: 2, mode: "number" }).notNull(),
+  },
+  (t) => [
+    check(
+      "periodos_tarifarios_tipo_valido",
+      sql`${t.tipo} in ('temporada', 'feriado')`,
+    ),
+    check(
+      "periodos_tarifarios_destino_so_na_temporada",
+      sql`(${t.tipo} = 'temporada') = (${t.destino} is not null)`,
+    ),
+    check(
+      "periodos_tarifarios_fim_depois_do_inicio",
+      sql`${t.fim} >= ${t.inicio}`,
+    ),
+    check("periodos_tarifarios_fator_positivo", sql`${t.fator} > 0`),
   ],
 );

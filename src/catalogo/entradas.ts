@@ -28,6 +28,39 @@ export type EntradaVerificarDisponibilidade = z.input<
   typeof entradaVerificarDisponibilidade
 >;
 
+const grupo = z
+  .object(
+    {
+      adultos: z
+        .number({ error: "Informe o número de adultos, como 2." })
+        .int("O número de adultos é inteiro.")
+        .min(1, "O Grupo precisa de pelo menos 1 adulto."),
+      // Children are priced by the Política de Crianças (#5); until then the
+      // list must be empty, so no child is ever quoted at an adult's price.
+      criancas: z
+        .array(z.number().int().min(0))
+        .max(
+          0,
+          "Por enquanto só é possível cotar Grupos de adultos; envie criancas como lista vazia.",
+        )
+        .default([])
+        .describe("Idade de cada criança, em anos."),
+    },
+    { error: "Informe o Grupo, como { adultos: 2, criancas: [] }." },
+  )
+  .describe("Quem viaja: número de adultos e a idade de cada criança.");
+
+/** Grupo: who travels, as the operations receive it after validation. */
+export type Grupo = z.output<typeof grupo>;
+
+export const entradaConsultarPreco = z.object({
+  pacote: slugDoPacote,
+  data: dataDaSaida,
+  grupo,
+});
+
+export type EntradaConsultarPreco = z.input<typeof entradaConsultarPreco>;
+
 /** Validates `entrada`, turning schema violations into an ENTRADA_INVALIDA value. */
 export function validar<S extends z.ZodType>(
   schema: S,

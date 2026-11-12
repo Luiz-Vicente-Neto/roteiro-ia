@@ -5,7 +5,7 @@ import type { DadosDoCatalogo } from "./tipos";
  * Postgres through the seed and the in-memory Base in tests and evaluation,
  * so both always hold exactly the same catalog.
  *
- * Small on purpose for now: 1 Destino and a few Pacotes. The full 2027
+ * Small on purpose for now: 1 Destino, a few Pacotes and Períodos. The full 2027
  * catalog comes in a later ticket.
  */
 export const semente: DadosDoCatalogo = {
@@ -35,6 +35,7 @@ export const semente: DadosDoCatalogo = {
         "Traslado rodoviária–hotel",
         "City tour por Gramado e Canela",
       ],
+      precoBase: 214100,
     },
     {
       slug: "gramado-serra-azul-5n",
@@ -47,6 +48,7 @@ export const semente: DadosDoCatalogo = {
         "City tour por Gramado e Canela",
         "Passeio de Maria Fumaça",
       ],
+      precoBase: 329000,
     },
     {
       slug: "gramado-vale-das-hortensias-4n",
@@ -54,6 +56,7 @@ export const semente: DadosDoCatalogo = {
       hotel: "vale-das-hortensias",
       noites: 4,
       inclui: ["Café da manhã", "Fondue de boas-vindas"],
+      precoBase: 276000,
     },
   ],
   saidas: [
@@ -74,6 +77,31 @@ export const semente: DadosDoCatalogo = {
       pacote: "gramado-vale-das-hortensias-4n",
       data: "2027-01-28",
       vagasTotais: 2,
+    },
+  ],
+  periodos: [
+    {
+      nome: "Natal Luz",
+      tipo: "temporada",
+      destino: "gramado",
+      inicio: "2026-10-22",
+      fim: "2027-01-17",
+      fator: 1.25,
+    },
+    // Covers the Saídas of the New Year week, so it overlaps Natal Luz.
+    {
+      nome: "Confraternização Universal",
+      tipo: "feriado",
+      inicio: "2026-12-26",
+      fim: "2027-01-03",
+      fator: 1.4,
+    },
+    {
+      nome: "Carnaval",
+      tipo: "feriado",
+      inicio: "2027-02-05",
+      fim: "2027-02-10",
+      fator: 1.3,
     },
   ],
 };
