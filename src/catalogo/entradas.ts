@@ -67,6 +67,11 @@ export const entradaConsultarPreco = z.object({
 
 export type EntradaConsultarPreco = z.input<typeof entradaConsultarPreco>;
 
+/** Proposing takes exactly what quoting takes, and is validated the same way. */
+export const entradaProporPreReserva = entradaConsultarPreco;
+
+export type EntradaProporPreReserva = EntradaConsultarPreco;
+
 const dataDaJanela = z.iso.date({
   error:
     "Use uma data de calendário real no formato AAAA-MM-DD, sem hora (ex.: 2027-07-01).",

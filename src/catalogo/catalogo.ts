@@ -3,6 +3,7 @@ import { buscar, destinosDaBusca } from "./busca";
 import {
   type EntradaBuscarPacotes,
   type EntradaConsultarPreco,
+  type EntradaProporPreReserva,
   type EntradaVerificarDisponibilidade,
   entradaBuscarPacotes,
   entradaConsultarPreco,
@@ -13,10 +14,15 @@ import { falha } from "./erros";
 import { criarFerramentas } from "./ferramentas";
 import { recusaDoGrupo } from "./grupo";
 import { cotar } from "./preco";
+import { gerarIdDaProposta } from "./proposta";
 import type { Relogio } from "./relogio";
 import type { DadosDoCatalogo } from "./tipos";
+import { vagasRestantes } from "./vagas";
 
 const SUGESTOES_DE_SAIDA = 3;
+
+/** A Proposta can be confirmed for 15 minutes after it is made. */
+const VALIDADE_DA_PROPOSTA_MS = 15 * 60 * 1000;
 
 /** ISO dates closest to `alvo` (ties go to the earlier one), returned in date order. */
 function datasMaisProximas(datas: string[], alvo: string): string[] {
@@ -76,6 +82,29 @@ export function criarCatalogo({
   base: BaseDoCatalogo;
   relogio: Relogio;
 }) {
+  /**
+   * Validates and quotes like consultar_preco, also handing back the catalog
+   * it read. Every operation that quotes goes through it, so they all fail
+   * the same way.
+   */
+  async function cotarEntrada(bruta: EntradaConsultarPreco) {
+    const validacao = validar(entradaConsultarPreco, bruta);
+    if (!validacao.ok) return validacao;
+    const entrada = validacao.valor;
+    const catalogo = await base.lerCatalogo();
+    const encontrada = encontrarSaida(catalogo, entrada, relogio.hoje());
+    if (!encontrada.ok) return encontrada;
+    const recusa = recusaDoGrupo(encontrada.pacote, entrada.grupo);
+    if (recusa) return recusa;
+    const cotacao = cotar(
+      catalogo,
+      encontrada.pacote,
+      encontrada.saida,
+      entrada.grupo,
+    );
+    return { ok: true as const, catalogo, cotacao };
+  }
+
   const operacoes = {
     async buscarPacotes(bruta: EntradaBuscarPacotes) {
       const validacao = validar(entradaBuscarPacotes, bruta);
@@ -118,26 +147,59 @@ export function criarCatalogo({
         pacote: saida.pacote,
         data: saida.data,
         vagasTotais: saida.vagasTotais,
-        // Equal to the total until Pré-reservas exist (#9) and are subtracted.
-        vagasRestantes: saida.vagasTotais,
+        vagasRestantes: vagasRestantes(saida),
       };
     },
 
     async consultarPreco(bruta: EntradaConsultarPreco) {
-      const validacao = validar(entradaConsultarPreco, bruta);
-      if (!validacao.ok) return validacao;
-      const entrada = validacao.valor;
-      const catalogo = await base.lerCatalogo();
-      const encontrada = encontrarSaida(catalogo, entrada, relogio.hoje());
-      if (!encontrada.ok) return encontrada;
-      const recusa = recusaDoGrupo(encontrada.pacote, entrada.grupo);
-      if (recusa) return recusa;
-      return cotar(
-        catalogo,
-        encontrada.pacote,
-        encontrada.saida,
-        entrada.grupo,
-      );
+      const cotada = await cotarEntrada(bruta);
+      return cotada.ok ? cotada.cotacao : cotada;
+    },
+
+    async proporPreReserva(bruta: EntradaProporPreReserva) {
+      const cotada = await cotarEntrada(bruta);
+      if (!cotada.ok) return cotada;
+      // The Proposta carries the Cotação without its own `ok`.
+      const { ok: _, ...cotacao } = cotada.cotacao;
+      const { vagasDoGrupo } = cotacao;
+      if (vagasDoGrupo > cotacao.vagasRestantes) {
+        const hoje = relogio.hoje();
+        const queCabem = cotada.catalogo.saidas
+          .filter(
+            (s) =>
+              s.pacote === cotacao.pacote.slug &&
+              s.data >= hoje &&
+              s.data !== cotacao.data &&
+              vagasRestantes(s) >= vagasDoGrupo,
+          )
+          .map((s) => s.data);
+        const sugestoes = datasMaisProximas(queCabem, cotacao.data);
+        const faltam = `A Saída de ${cotacao.data} do Pacote "${cotacao.pacote.slug}" tem ${cotacao.vagasRestantes} Vagas restantes, e o Grupo tem ${vagasDoGrupo} pessoas (cada criança ocupa uma Vaga, mesmo sem pagar).`;
+        return falha(
+          "VAGAS_INSUFICIENTES",
+          sugestoes.length > 0
+            ? `${faltam} Ofereça outra Saída; as mais próximas com Vagas para o Grupo estão em sugestoes.`
+            : `${faltam} Nenhuma outra Saída futura do Pacote tem Vagas para o Grupo; ofereça outro Pacote.`,
+          sugestoes,
+        );
+      }
+      const criadaEm = relogio.agora();
+      const proposta = {
+        id: gerarIdDaProposta(),
+        pacote: cotacao.pacote.slug,
+        data: cotacao.data,
+        grupo: cotacao.grupo,
+        total: cotacao.total,
+        criadaEm,
+        expiraEm: new Date(criadaEm.getTime() + VALIDADE_DA_PROPOSTA_MS),
+      };
+      await base.gravarProposta(proposta);
+      return {
+        ok: true as const,
+        id: proposta.id,
+        cotacao,
+        expiraEm: proposta.expiraEm.toISOString(),
+      };
     },
   };
   return { ...operacoes, ferramentas: criarFerramentas(operacoes) };

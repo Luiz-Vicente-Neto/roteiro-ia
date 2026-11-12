@@ -8,6 +8,7 @@ import type {
   PeriodoTarifario,
   Saida,
 } from "./tipos";
+import { vagasRestantes } from "./vagas";
 
 /**
  * `centavos × centesimos / 100`, rounded to whole reais (half up) and given
@@ -106,7 +107,6 @@ export function cotar(
     total: precoPorPessoa.reduce((soma, p) => soma + p.preco, 0),
     // Every person takes a Vaga, children included, even at 0%.
     vagasDoGrupo: precoPorPessoa.length,
-    // Equal to the total until Pré-reservas exist (#9) and are subtracted.
-    vagasRestantes: saida.vagasTotais,
+    vagasRestantes: vagasRestantes(saida),
   };
 }

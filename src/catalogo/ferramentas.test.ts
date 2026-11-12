@@ -120,6 +120,57 @@ describe("ferramentas", () => {
     },
   );
 
+  it("expõe propor_pre_reserva deixando claro que ela não reserva: só prepara uma Proposta que o viajante confirma fora do chat", () => {
+    const propor = ferramenta("propor_pre_reserva");
+
+    expect(propor.descricao).toMatch(/não reserva/i);
+    expect(propor.descricao).toMatch(/não bloqueia Vagas/i);
+    expect(propor.descricao).toMatch(/viajante.*confirm/i);
+    expect(
+      propor.schemaDeEntrada.safeParse({
+        pacote: "x",
+        data: "2027-01-09",
+        grupo: { adultos: 2 },
+      }).success,
+    ).toBe(true);
+    expect(
+      propor.schemaDeEntrada.safeParse({ pacote: "x", data: "2027-01-09" })
+        .success,
+    ).toBe(false);
+  });
+
+  it("executar propor_pre_reserva devolve uma Proposta como a operação direta, cada uma com seu próprio id", async () => {
+    const entrada = {
+      pacote: "gramado-serra-azul-3n",
+      data: "2027-01-30",
+      grupo: { adultos: 2 },
+    };
+
+    const pelaFerramenta =
+      await ferramenta("propor_pre_reserva").executar(entrada);
+    const direta = await catalogo.proporPreReserva(entrada);
+
+    expect(pelaFerramenta).toEqual({ ...direta, id: expect.any(String) });
+    expect(pelaFerramenta).not.toEqual(direta);
+  });
+
+  it.each([
+    {
+      pacote: "gramado-serra-azul-3n",
+      data: "2027-01-23",
+      grupo: { adultos: 4 },
+    },
+    { pacote: "nao-existe", data: "2027-01-09", grupo: { adultos: 1 } },
+    { pacote: "gramado-serra-azul-3n", data: "2027-01-09" },
+  ])(
+    "executar propor_pre_reserva dá o mesmo erro que a operação direta ($pacote, $data)",
+    async (entrada) => {
+      expect(await ferramenta("propor_pre_reserva").executar(entrada)).toEqual(
+        await catalogo.proporPreReserva(entrada as never),
+      );
+    },
+  );
+
   it("executar com entrada que não é um objeto devolve ENTRADA_INVALIDA em vez de lançar exceção", async () => {
     expect(
       await ferramenta("verificar_disponibilidade").executar("gramado"),

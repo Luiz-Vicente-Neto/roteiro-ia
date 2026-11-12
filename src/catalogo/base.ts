@@ -4,6 +4,7 @@ import type {
   FaixaDeIdade,
   PeriodoTarifario,
   PoliticaDeCriancas,
+  Proposta,
 } from "./tipos";
 
 /**
@@ -13,6 +14,10 @@ import type {
  */
 export interface BaseDoCatalogo {
   lerCatalogo(): Promise<DadosDoCatalogo>;
+  /** Records a new Proposta under its id, which the caller guarantees is new. */
+  gravarProposta(proposta: Proposta): Promise<void>;
+  /** The Proposta with `id`, or undefined if none was recorded. Expired ones too: expiry is the module's rule. */
+  lerProposta(id: string): Promise<Proposta | undefined>;
 }
 
 /** Code-point order: no locale rules, so every implementation sorts the same way. */
@@ -108,9 +113,17 @@ export function criarBaseEmMemoria(dados: DadosDoCatalogo): BaseDoCatalogo {
   conferirCatalogo(dados);
   // Copied on the way in and out, so no caller can change the stored catalog.
   const catalogo = ordenarCatalogo(structuredClone(dados));
+  const propostas = new Map<string, Proposta>();
   return {
     async lerCatalogo() {
       return structuredClone(catalogo);
+    },
+    async gravarProposta(proposta) {
+      propostas.set(proposta.id, structuredClone(proposta));
+    },
+    async lerProposta(id) {
+      const proposta = propostas.get(id);
+      return proposta && structuredClone(proposta);
     },
   };
 }

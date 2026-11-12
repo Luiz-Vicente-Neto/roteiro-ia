@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { BaseDoCatalogo } from "./base";
 import { semente } from "./semente";
-import type { DadosDoCatalogo } from "./tipos";
+import type { DadosDoCatalogo, Proposta } from "./tipos";
 
 /** Builds a Base do Catálogo holding exactly `dados`, empty of anything else. */
 export type CriarBase = (dados: DadosDoCatalogo) => Promise<BaseDoCatalogo>;
@@ -247,6 +247,40 @@ export function testarContratoDaBase(nome: string, criarBase: CriarBase) {
       expect(catalogo.saidas).toContainEqual(amostra.ultimaSaida);
       expect(catalogo.periodos).toContainEqual(amostra.feriado);
       expect(catalogo.periodos).toContainEqual(amostra.temporada);
+    });
+
+    it("grava uma Proposta e a lê de volta pelo id, com o Grupo na ordem dada e os instantes exatos", async () => {
+      const base = await criarBase(dados);
+      const comCriancas: Proposta = {
+        id: "a1".repeat(32),
+        pacote: "campos-chateau-montanha-2n",
+        data: "2027-12-31",
+        grupo: { adultos: 2, criancas: [9, 0, 11] },
+        total: 448900,
+        criadaEm: new Date("2026-12-01T12:00:00.123Z"),
+        expiraEm: new Date("2026-12-01T12:15:00.123Z"),
+      };
+      const semCriancas: Proposta = {
+        id: "b2".repeat(32),
+        pacote: "jericoacoara-vila-kalango-7n",
+        data: "2027-12-31",
+        grupo: { adultos: 1, criancas: [] },
+        total: 564100,
+        criadaEm: new Date("2026-12-31T23:59:59.999Z"),
+        expiraEm: new Date("2027-01-01T00:14:59.999Z"),
+      };
+
+      await base.gravarProposta(comCriancas);
+      await base.gravarProposta(semCriancas);
+
+      expect(await base.lerProposta(comCriancas.id)).toEqual(comCriancas);
+      expect(await base.lerProposta(semCriancas.id)).toEqual(semCriancas);
+    });
+
+    it("lê undefined para um id de Proposta que nunca foi gravado", async () => {
+      const base = await criarBase(dados);
+
+      expect(await base.lerProposta("c3".repeat(32))).toBeUndefined();
     });
 
     it("lê um catálogo vazio", async () => {

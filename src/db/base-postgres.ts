@@ -1,12 +1,13 @@
 // Postgres implementation of the Base do Catálogo. Drizzle stays inside this
 // adapter: rows are translated to the catalog's domain types on the way out.
-import { type AnyColumn, sql } from "drizzle-orm";
+import { type AnyColumn, eq, sql } from "drizzle-orm";
 import {
   type BaseDoCatalogo,
   conferirCatalogo,
   type DadosDoCatalogo,
   type FaixaDeIdade,
   type PeriodoTarifario,
+  type Proposta,
 } from "../catalogo";
 import type { Db } from "./client";
 import {
@@ -15,6 +16,7 @@ import {
   hoteis,
   pacotes,
   periodosTarifarios,
+  propostas,
   saidas,
 } from "./schema";
 
@@ -101,6 +103,32 @@ export function criarBasePostgres(db: Db): BaseDoCatalogo {
         periodos: periodoRows.map(paraPeriodo),
       };
     },
+
+    async gravarProposta({ grupo, ...proposta }) {
+      await db.insert(propostas).values({ ...proposta, ...grupo });
+    },
+
+    async lerProposta(id) {
+      const [row] = await db
+        .select()
+        .from(propostas)
+        .where(eq(propostas.id, id));
+      return row && paraProposta(row);
+    },
+  };
+}
+
+function paraProposta(row: typeof propostas.$inferSelect): Proposta {
+  const { id, pacote, data, adultos, criancas, total, criadaEm, expiraEm } =
+    row;
+  return {
+    id,
+    pacote,
+    data,
+    grupo: { adultos, criancas },
+    total,
+    criadaEm,
+    expiraEm,
   };
 }
 
@@ -127,9 +155,10 @@ function paraLinhaDePeriodo(
 }
 
 /**
- * Replaces the whole catalog with `dados`, atomically. Used by the seed and
- * the contract tests. Checked first with the same rules as the in-memory
- * Base, since no SQL constraint sees a Política's faixas together.
+ * Replaces the whole catalog with `dados`, atomically, dropping every
+ * Proposta. Used by the seed and the contract tests. Checked first with the
+ * same rules as the in-memory Base, since no SQL constraint sees a Política's
+ * faixas together.
  */
 export async function substituirCatalogo(
   db: Db,
@@ -148,7 +177,9 @@ export async function substituirCatalogo(
       : [],
   );
   await db.transaction(async (tx) => {
-    // Children first, so foreign keys never point at a deleted row.
+    // Children first, so foreign keys never point at a deleted row. Propostas
+    // point at Saídas, so a new catalog starts without any.
+    await tx.delete(propostas);
     await tx.delete(periodosTarifarios);
     await tx.delete(saidas);
     await tx.delete(faixasDeCriancas);

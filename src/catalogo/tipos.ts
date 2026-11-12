@@ -1,4 +1,5 @@
 /** Domain types of the catalog. Storage adapters translate to and from these. */
+import type { Grupo } from "./entradas";
 
 export interface Destino {
   slug: string;
@@ -85,4 +86,23 @@ export interface DadosDoCatalogo {
   pacotes: Pacote[];
   saidas: Saida[];
   periodos: PeriodoTarifario[];
+}
+
+/**
+ * Proposta: what the model proposed for the person to confirm. Recorded, but
+ * it takes no Vagas (docs/adr/0003), and it is valid until `expiraEm`.
+ */
+export interface Proposta {
+  /** Long and random, never sequential: nobody can guess another person's. */
+  id: string;
+  /** Slug of the Pacote. */
+  pacote: string;
+  /** Date of the Saída, `YYYY-MM-DD`. */
+  data: string;
+  /** The Grupo as validated, each child's age in the order given. */
+  grupo: Grupo;
+  /** Total of the Cotação, in centavos, so confirming can tell if the price changed. */
+  total: number;
+  criadaEm: Date;
+  expiraEm: Date;
 }

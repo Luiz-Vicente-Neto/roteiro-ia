@@ -2,9 +2,11 @@ import type { z } from "zod";
 import {
   type EntradaBuscarPacotes,
   type EntradaConsultarPreco,
+  type EntradaProporPreReserva,
   type EntradaVerificarDisponibilidade,
   entradaBuscarPacotes,
   entradaConsultarPreco,
+  entradaProporPreReserva,
   entradaVerificarDisponibilidade,
 } from "./entradas";
 import type { Falha } from "./erros";
@@ -33,6 +35,9 @@ interface Operacoes {
   ): Promise<ResultadoDeFerramenta>;
   verificarDisponibilidade(
     entrada: EntradaVerificarDisponibilidade,
+  ): Promise<ResultadoDeFerramenta>;
+  proporPreReserva(
+    entrada: EntradaProporPreReserva,
   ): Promise<ResultadoDeFerramenta>;
 }
 
@@ -75,6 +80,17 @@ export function criarFerramentas(operacoes: Operacoes): Ferramenta[] {
         operacoes.verificarDisponibilidade(
           entrada as EntradaVerificarDisponibilidade,
         ),
+    },
+    {
+      nome: "propor_pre_reserva",
+      descricao:
+        "Prepara uma Proposta de Pré-reserva de um Pacote numa data de Saída para um Grupo, para o viajante confirmar. Esta ferramenta NÃO reserva e não bloqueia Vagas: só o viajante confirma a Proposta, por um pedido de confirmação fora desta conversa, e você não tem como confirmar por ele. " +
+        "Use quando o viajante escolheu Pacote, data e Grupo e quer reservar. Recebe o mesmo que consultar_preco (slug do Pacote, data da Saída AAAA-MM-DD e Grupo) e valida o mesmo, com os mesmos erros. " +
+        "Devolve o id da Proposta, a Cotação e expiraEm, o instante em que a Proposta deixa de valer: ela vale 15 minutos. Mostre ao viajante o resumo e o total e diga que ele precisa confirmar para garantir as Vagas; nunca diga que a viagem está reservada. " +
+        "Se a Saída não tiver Vagas restantes para o Grupo inteiro (cada criança ocupa uma Vaga), devolve VAGAS_INSUFICIENTES com as Saídas mais próximas que cabem o Grupo em sugestoes.",
+      schemaDeEntrada: entradaProporPreReserva,
+      executar: (entrada) =>
+        operacoes.proporPreReserva(entrada as EntradaProporPreReserva),
     },
   ];
 }

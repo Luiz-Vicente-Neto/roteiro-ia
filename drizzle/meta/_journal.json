@@ -29,6 +29,13 @@
       "when": 1794489303074,
       "tag": "0003_politica-de-criancas",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1794491243083,
+      "tag": "0004_propostas",
+      "breakpoints": true
     }
   ]
 }
