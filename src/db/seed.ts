@@ -1,8 +1,12 @@
 import { sql } from "drizzle-orm";
+import { semente } from "../catalogo";
+import { substituirCatalogo } from "./base-postgres";
 import type { Db } from "./client";
 
-/** Loads the catalog. Empty for now: the catalog tickets fill it in. */
-export async function seed(_db: Db): Promise<void> {}
+/** Loads the catalog from the same source the in-memory Base uses in tests. */
+export async function seed(db: Db): Promise<void> {
+  await substituirCatalogo(db, semente);
+}
 
 /**
  * The database is empty when no table in the `public` schema has a row.

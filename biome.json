@@ -26,6 +26,37 @@
       "react": "recommended"
     }
   },
+  "overrides": [
+    {
+      "includes": ["src/catalogo/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["next", "next/**", "react", "react/**"],
+                    "message": "O módulo catalogo é independente de framework: não importe o Next."
+                  },
+                  {
+                    "group": [
+                      "drizzle-orm",
+                      "drizzle-orm/**",
+                      "postgres",
+                      "**/db/**"
+                    ],
+                    "message": "O Drizzle e o Postgres ficam só no adaptador em src/db (docs/adr/0001)."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ],
   "assist": {
     "actions": {
       "source": {

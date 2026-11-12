@@ -1,0 +1,215 @@
+{
+  "id": "f9be3bc3-7324-462e-995a-cf5f2698b1bc",
+  "prevId": "3815021a-9060-4659-8f6d-7c49cb7cd723",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.destinos": {
+      "name": "destinos",
+      "schema": "",
+      "columns": {
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nome": {
+          "name": "nome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.hoteis": {
+      "name": "hoteis",
+      "schema": "",
+      "columns": {
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nome": {
+          "name": "nome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "destino": {
+          "name": "destino",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "aceita_pet": {
+          "name": "aceita_pet",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "hoteis_destino_destinos_slug_fk": {
+          "name": "hoteis_destino_destinos_slug_fk",
+          "tableFrom": "hoteis",
+          "tableTo": "destinos",
+          "columnsFrom": [
+            "destino"
+          ],
+          "columnsTo": [
+            "slug"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.pacotes": {
+      "name": "pacotes",
+      "schema": "",
+      "columns": {
+        "slug": {
+          "name": "slug",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "nome": {
+          "name": "nome",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hotel": {
+          "name": "hotel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "noites": {
+          "name": "noites",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "inclui": {
+          "name": "inclui",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "pacotes_hotel_hoteis_slug_fk": {
+          "name": "pacotes_hotel_hoteis_slug_fk",
+          "tableFrom": "pacotes",
+          "tableTo": "hoteis",
+          "columnsFrom": [
+            "hotel"
+          ],
+          "columnsTo": [
+            "slug"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "pacotes_noites_positivas": {
+          "name": "pacotes_noites_positivas",
+          "value": "\"pacotes\".\"noites\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.saidas": {
+      "name": "saidas",
+      "schema": "",
+      "columns": {
+        "pacote": {
+          "name": "pacote",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data": {
+          "name": "data",
+          "type": "date",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "vagas_totais": {
+          "name": "vagas_totais",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "saidas_pacote_pacotes_slug_fk": {
+          "name": "saidas_pacote_pacotes_slug_fk",
+          "tableFrom": "saidas",
+          "tableTo": "pacotes",
+          "columnsFrom": [
+            "pacote"
+          ],
+          "columnsTo": [
+            "slug"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "saidas_pacote_data_pk": {
+          "name": "saidas_pacote_data_pk",
+          "columns": [
+            "pacote",
+            "data"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "saidas_vagas_nao_negativas": {
+          "name": "saidas_vagas_nao_negativas",
+          "value": "\"saidas\".\"vagas_totais\" >= 0"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

@@ -8,6 +8,13 @@
       "when": 1794485713994,
       "tag": "0000_habilita-pgvector",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794488014923,
+      "tag": "0001_cria-catalogo",
+      "breakpoints": true
     }
   ]
 }
