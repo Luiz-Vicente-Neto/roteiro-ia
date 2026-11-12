@@ -1,15 +1,57 @@
 "use client";
 
 import { useChat } from "@ai-sdk/react";
-import { isToolUIPart, type UIMessage } from "ai";
-import { type FormEvent, useState } from "react";
+import { DefaultChatTransport, isToolUIPart, type UIMessage } from "ai";
+import { type FormEvent, useEffect, useRef, useState } from "react";
 import { ASSISTENTE_INDISPONIVEL } from "@/assistente/mensagens";
 import { cardsDaResposta, chamadasDaResposta } from "@/assistente/resposta";
 import { CardsDeCotacao, PainelDeChamadas } from "./resposta";
 
-export function Conversa() {
+/** Sends only the new text: the server holds the Conversa's history. */
+function transporte(conversa: { current: string | undefined }) {
+  return new DefaultChatTransport({
+    api: "/api/chat",
+    prepareSendMessagesRequest: ({ messages }) => ({
+      body: { conversa: conversa.current, texto: textoDe(messages.at(-1)) },
+    }),
+  });
+}
+
+/** The Conversa sent by the server in the answer's metadata, if any. */
+function conversaDa(mensagem: UIMessage | undefined): string | undefined {
+  const metadados = mensagem?.metadata as { conversa?: unknown } | undefined;
+  return typeof metadados?.conversa === "string"
+    ? metadados.conversa
+    : undefined;
+}
+
+/**
+ * The screen of one Conversa. Without `conversa` it is a new one: the server
+ * creates it on the first message, and the address becomes its link.
+ */
+export function Conversa({
+  conversa,
+  mensagens = [],
+}: {
+  conversa?: string;
+  mensagens?: UIMessage[];
+}) {
   const [texto, setTexto] = useState("");
-  const { messages, sendMessage, status, error } = useChat();
+  const idDaConversa = useRef(conversa);
+  const [transport] = useState(() => transporte(idDaConversa));
+  const { messages, sendMessage, status, error } = useChat({
+    messages: mensagens,
+    transport,
+  });
+
+  useEffect(() => {
+    if (idDaConversa.current) return;
+    const nova = conversaDa(messages.findLast((m) => m.role === "assistant"));
+    if (!nova) return;
+    idDaConversa.current = nova;
+    // Without a navigation, so the answer keeps streaming on screen.
+    window.history.replaceState(null, "", `/c/${nova}`);
+  }, [messages]);
   const ocupado = status === "submitted" || status === "streaming";
 
   function enviar(evento: FormEvent<HTMLFormElement>) {
@@ -80,7 +122,8 @@ export function Conversa() {
   );
 }
 
-function textoDe(mensagem: UIMessage): string {
+function textoDe(mensagem: UIMessage | undefined): string {
+  if (!mensagem) return "";
   return mensagem.parts
     .flatMap((p) => (p.type === "text" ? [p.text] : []))
     .join("");

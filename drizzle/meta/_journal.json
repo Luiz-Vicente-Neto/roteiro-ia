@@ -43,6 +43,13 @@
       "when": 1794492094394,
       "tag": "0005_pre-reservas",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794505465852,
+      "tag": "0006_conversas",
+      "breakpoints": true
     }
   ]
 }

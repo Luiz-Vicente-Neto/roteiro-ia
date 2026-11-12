@@ -12,8 +12,9 @@ import {
 } from "ai";
 import { z } from "zod";
 import type { Ferramenta, Relogio } from "../catalogo";
+import type { BaseDeConversas, ItemDaConversa } from "./base";
 import { instrucoes } from "./instrucoes";
-import { ASSISTENTE_INDISPONIVEL } from "./mensagens";
+import { ASSISTENTE_INDISPONIVEL, FERRAMENTA_FALHOU } from "./mensagens";
 
 /**
  * At most this many tool steps per answer, so a confused model cannot burn
@@ -44,35 +45,97 @@ function paraToolsDoSdk(
   );
 }
 
+/** What enviarMensagem answers for a Conversa the dono cannot see. */
+export type ConversaNaoExiste = { ok: false; erro: "CONVERSA_NAO_EXISTE" };
+
+/** The messages of a Conversa's items. Eventos join them in the Proposta's ticket. */
+export function mensagensDe(itens: ItemDaConversa[]): UIMessage[] {
+  return itens.flatMap((item) =>
+    item.tipo === "mensagem" ? [item.mensagem] : [],
+  );
+}
+
 export function criarAssistente({
   modelo,
   catalogo,
+  conversas,
   relogio,
 }: {
   modelo: LanguageModel;
   /** Only the ferramentas: confirmarPreReserva never reaches the model (docs/adr/0003). */
   catalogo: { ferramentas: readonly Ferramenta[] };
+  conversas: BaseDeConversas;
   relogio: Relogio;
 }) {
   const tools = paraToolsDoSdk(catalogo.ferramentas);
 
+  /** The Conversa `id` if it belongs to `dono`. For anyone else it does not exist. */
+  async function conversaDo(dono: string, id: string) {
+    const conversa = await conversas.lerConversa(id);
+    return conversa?.dono === dono ? conversa : undefined;
+  }
+
   return {
-    enviarMensagem({
-      historico,
+    /**
+     * Sends the Viajante's `texto` in the Conversa `conversa`, or in a new one
+     * when none is given. The Viajante's message is recorded before the model
+     * is called, so it stays even if the provider fails; the Assistente's
+     * answer is recorded when its stream ends without a failure.
+     */
+    async enviarMensagem({
+      dono,
+      conversa: idDaConversa,
       texto,
     }: {
-      historico: UIMessage[];
+      dono: string;
+      conversa?: string;
       texto: string;
-    }): ReadableStream<UIMessageChunk> {
-      const mensagens: UIMessage[] = [
-        ...historico,
-        {
-          id: crypto.randomUUID(),
-          role: "user",
-          parts: [{ type: "text", text: texto }],
-        },
-      ];
-      return createUIMessageStream({
+    }): Promise<
+      | { ok: true; conversa: string; stream: ReadableStream<UIMessageChunk> }
+      | ConversaNaoExiste
+    > {
+      let historico: UIMessage[] = [];
+      let id: string;
+      if (idDaConversa === undefined) {
+        id = crypto.randomUUID();
+        const agora = relogio.agora();
+        await conversas.criarConversa({
+          id,
+          dono,
+          titulo: "",
+          criadaEm: agora,
+          ultimaAtividade: agora,
+        });
+      } else {
+        if (!(await conversaDo(dono, idDaConversa))) {
+          return { ok: false, erro: "CONVERSA_NAO_EXISTE" };
+        }
+        id = idDaConversa;
+        historico = mensagensDe(await conversas.lerItens(id));
+      }
+
+      const doViajante: UIMessage = {
+        id: crypto.randomUUID(),
+        role: "user",
+        parts: [{ type: "text", text: texto }],
+      };
+      await conversas.adicionarItem(
+        id,
+        { tipo: "mensagem", mensagem: doViajante },
+        relogio.agora(),
+      );
+      const mensagens = [...historico, doViajante];
+
+      // Set by provider failures only. A failed tool call is part of a good
+      // answer: the model sees it and goes on, and the answer is kept.
+      let falhou = false;
+      const indisponivel = () => {
+        falhou = true;
+        return ASSISTENTE_INDISPONIVEL;
+      };
+      const stream = createUIMessageStream({
+        originalMessages: mensagens,
+        generateId: () => crypto.randomUUID(),
         execute: async ({ writer }) => {
           const resultado = streamText({
             model: modelo,
@@ -84,18 +147,49 @@ export function criarAssistente({
                 ? { toolChoice: "none", activeTools: [] }
                 : undefined,
             messages: await convertToModelMessages(mensagens, { tools }),
+            // Runs for the stream's own errors, before the UI stream formats them.
+            onError: () => {
+              falhou = true;
+            },
           });
           writer.merge(
             toUIMessageStream({
               stream: resultado.stream,
               tools,
-              onError: () => ASSISTENTE_INDISPONIVEL,
+              // The browser learns the new Conversa's link from here.
+              messageMetadata: ({ part }) =>
+                part.type === "start" ? { conversa: id } : undefined,
+              // Formats provider errors and tool errors alike.
+              onError: () =>
+                falhou ? ASSISTENTE_INDISPONIVEL : FERRAMENTA_FALHOU,
             }),
           );
         },
         // streamText already logged the technical detail on the server.
-        onError: () => ASSISTENTE_INDISPONIVEL,
+        onError: indisponivel,
+        onEnd: async ({ responseMessage, isAborted }) => {
+          // A failed or cut answer is not kept: the Viajante just sends again.
+          if (falhou || isAborted) return;
+          await conversas.adicionarItem(
+            id,
+            { tipo: "mensagem", mensagem: responseMessage },
+            relogio.agora(),
+          );
+        },
       });
+      return { ok: true, conversa: id, stream };
+    },
+
+    /** The items of the Conversa, in order, or undefined when it is not `dono`'s. */
+    async abrirConversa({
+      dono,
+      conversa,
+    }: {
+      dono: string;
+      conversa: string;
+    }): Promise<ItemDaConversa[] | undefined> {
+      if (!(await conversaDo(dono, conversa))) return undefined;
+      return conversas.lerItens(conversa);
     },
   };
 }

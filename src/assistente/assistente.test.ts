@@ -8,10 +8,12 @@ import { describe, expect, it } from "vitest";
 import { criarBaseEmMemoria, criarCatalogo, relogioFixo } from "../catalogo";
 import { catalogoDeTeste } from "../catalogo/catalogo-de-teste";
 import {
+  ASSISTENTE_INDISPONIVEL,
   cardsDaResposta,
   chamadasDaResposta,
   chaveDoCard,
   criarAssistente,
+  criarBaseDeConversasEmMemoria,
 } from ".";
 
 const relogio = relogioFixo("2026-12-01T09:00:00-03:00");
@@ -78,8 +80,23 @@ function passoDeFerramenta(
   };
 }
 
-function assistenteCom(modelo: MockLanguageModelV4) {
-  return criarAssistente({ modelo, catalogo, relogio });
+function assistenteCom(
+  modelo: MockLanguageModelV4,
+  conversas = criarBaseDeConversasEmMemoria(),
+) {
+  return criarAssistente({ modelo, catalogo, conversas, relogio });
+}
+
+const dono = "dono-de-teste";
+
+/** Sends `texto` in a new Conversa, failing the test if it is refused. */
+async function abrirStream(
+  modelo: MockLanguageModelV4,
+  texto: string,
+): Promise<ReadableStream<UIMessageChunk>> {
+  const envio = await assistenteCom(modelo).enviarMensagem({ dono, texto });
+  if (!envio.ok) throw new Error(envio.erro);
+  return envio.stream;
 }
 
 /** The first tool result the model received, in its second call. */
@@ -94,11 +111,7 @@ async function enviar(
   modelo: MockLanguageModelV4,
   mensagem = "4 dias em Gramado em julho, casal, até R$ 4 mil",
 ): Promise<UIMessageChunk[]> {
-  const stream = assistenteCom(modelo).enviarMensagem({
-    historico: [],
-    texto: mensagem,
-  });
-  return convertReadableStreamToArray(stream);
+  return convertReadableStreamToArray(await abrirStream(modelo, mensagem));
 }
 
 describe("enviarMensagem", () => {
@@ -242,10 +255,7 @@ async function resposta(
   modelo: MockLanguageModelV4,
   mensagem = "4 dias em Gramado, casal",
 ): Promise<UIMessage> {
-  const stream = assistenteCom(modelo).enviarMensagem({
-    historico: [],
-    texto: mensagem,
-  });
+  const stream = await abrirStream(modelo, mensagem);
   let ultima: UIMessage | undefined;
   for await (const m of readUIMessageStream({ stream })) ultima = m;
   if (!ultima) throw new Error("O stream não montou nenhuma mensagem");
@@ -404,5 +414,203 @@ describe("chamadasDaResposta", () => {
         saida: expect.objectContaining({ ok: false, erro: "ENTRADA_INVALIDA" }),
       },
     ]);
+  });
+});
+
+describe("Conversa salva", () => {
+  const entrada = { pacote: "gramado-serra-azul-3n", data: "2027-01-09" };
+
+  /** Sends `texto` and reads the whole stream, as the browser would. */
+  async function enviarEm(
+    assistente: ReturnType<typeof assistenteCom>,
+    texto: string,
+    conversa?: string,
+    quem = dono,
+  ) {
+    const envio = await assistente.enviarMensagem({
+      dono: quem,
+      conversa,
+      texto,
+    });
+    if (!envio.ok) throw new Error(envio.erro);
+    const chunks = await convertReadableStreamToArray(envio.stream);
+    return { conversa: envio.conversa, chunks };
+  }
+
+  it("grava na Conversa a mensagem do Viajante e a resposta do Assistente, com as chamadas de ferramenta e os resultados", async () => {
+    const assistente = assistenteCom(
+      new MockLanguageModelV4({
+        doStream: [
+          passoDeFerramenta("verificar_disponibilidade", entrada),
+          passoDeTexto("Ainda há Vagas nessa Saída."),
+        ],
+      }),
+    );
+
+    const { conversa } = await enviarEm(
+      assistente,
+      "Tem vaga em 9 de janeiro?",
+    );
+
+    const itens = await assistente.abrirConversa({ dono, conversa });
+    expect(itens).toEqual([
+      {
+        tipo: "mensagem",
+        mensagem: expect.objectContaining({
+          role: "user",
+          parts: [{ type: "text", text: "Tem vaga em 9 de janeiro?" }],
+        }),
+      },
+      {
+        tipo: "mensagem",
+        mensagem: expect.objectContaining({ role: "assistant" }),
+      },
+    ]);
+    const [, doAssistente] = itens ?? [];
+    if (doAssistente?.tipo !== "mensagem") throw new Error("Faltou a resposta");
+    expect(chamadasDaResposta(doAssistente.mensagem)).toEqual([
+      expect.objectContaining({
+        ferramenta: "verificar_disponibilidade",
+        entrada,
+        saida: await catalogo.verificarDisponibilidade(entrada),
+      }),
+    ]);
+    expect(doAssistente.mensagem.parts).toContainEqual(
+      expect.objectContaining({
+        type: "text",
+        text: "Ainda há Vagas nessa Saída.",
+      }),
+    );
+  });
+
+  it("informa o id da Conversa nova no stream, para o navegador ir ao link dela", async () => {
+    const assistente = assistenteCom(
+      new MockLanguageModelV4({ doStream: passoDeTexto("Olá!") }),
+    );
+
+    const { conversa, chunks } = await enviarEm(assistente, "Oi");
+
+    expect(chunks).toContainEqual(
+      expect.objectContaining({
+        type: "start",
+        messageMetadata: { conversa },
+      }),
+    );
+  });
+
+  it("com o provedor falhando, a mensagem do Viajante fica gravada e o Viajante recebe a mensagem amigável", async () => {
+    const assistente = assistenteCom(
+      new MockLanguageModelV4({
+        doStream: async () => {
+          throw new Error("429 Too Many Requests");
+        },
+      }),
+    );
+
+    const { conversa, chunks } = await enviarEm(assistente, "Oi, tem Gramado?");
+
+    expect(chunks).toContainEqual({
+      type: "error",
+      errorText: ASSISTENTE_INDISPONIVEL,
+    });
+    // So the browser still goes to the Conversa that kept the message.
+    expect(chunks).toContainEqual(
+      expect.objectContaining({ messageMetadata: { conversa } }),
+    );
+    expect(await assistente.abrirConversa({ dono, conversa })).toEqual([
+      {
+        tipo: "mensagem",
+        mensagem: expect.objectContaining({
+          role: "user",
+          parts: [{ type: "text", text: "Oi, tem Gramado?" }],
+        }),
+      },
+    ]);
+  });
+
+  it("grava a resposta mesmo quando uma chamada de ferramenta dá erro no SDK, e o erro não vira a mensagem de indisponível", async () => {
+    const assistente = assistenteCom(
+      new MockLanguageModelV4({
+        doStream: [
+          passoDeFerramenta("ferramenta_que_nao_existe", {}),
+          passoDeTexto("Vou tentar de outro jeito."),
+        ],
+      }),
+    );
+
+    const { conversa, chunks } = await enviarEm(assistente, "Oi");
+
+    expect(chunks).not.toContainEqual(
+      expect.objectContaining({ errorText: ASSISTENTE_INDISPONIVEL }),
+    );
+    const itens = await assistente.abrirConversa({ dono, conversa });
+    expect(itens).toHaveLength(2);
+    expect(itens?.[1]).toMatchObject({
+      tipo: "mensagem",
+      mensagem: { role: "assistant" },
+    });
+  });
+
+  it("na mensagem seguinte, o modelo recebe o histórico inteiro da Conversa", async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("verificar_disponibilidade", entrada),
+        passoDeTexto("Ainda há Vagas nessa Saída."),
+        passoDeTexto("De nada!"),
+      ],
+    });
+    const assistente = assistenteCom(modelo);
+    const { conversa } = await enviarEm(
+      assistente,
+      "Tem vaga em 9 de janeiro?",
+    );
+
+    await enviarEm(assistente, "Obrigado", conversa);
+
+    const prompt = modelo.doStreamCalls[2]?.prompt ?? [];
+    expect(prompt.map((m) => m.role)).toEqual([
+      "system",
+      "user",
+      "assistant",
+      "tool",
+      "assistant",
+      "user",
+    ]);
+    expect(JSON.stringify(prompt)).toContain("Tem vaga em 9 de janeiro?");
+    expect(JSON.stringify(prompt)).toContain("Ainda há Vagas nessa Saída.");
+    expect(prompt.at(-1)).toMatchObject({
+      role: "user",
+      content: [{ type: "text", text: "Obrigado" }],
+    });
+  });
+
+  it("outro dono não consegue abrir a Conversa nem enviar mensagem nela, e o modelo nem é chamado", async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [passoDeTexto("Olá!"), passoDeTexto("Não devia responder.")],
+    });
+    const assistente = assistenteCom(modelo);
+    const { conversa } = await enviarEm(assistente, "Oi");
+
+    const outro = "outro-dono";
+    expect(
+      await assistente.abrirConversa({ dono: outro, conversa }),
+    ).toBeUndefined();
+    expect(
+      await assistente.enviarMensagem({ dono: outro, conversa, texto: "Oi" }),
+    ).toEqual({ ok: false, erro: "CONVERSA_NAO_EXISTE" });
+    expect(modelo.doStreamCalls).toHaveLength(1);
+    expect(await assistente.abrirConversa({ dono, conversa })).toHaveLength(2);
+  });
+
+  it("um id de Conversa desconhecido não existe, para abrir nem para enviar", async () => {
+    const assistente = assistenteCom(
+      new MockLanguageModelV4({ doStream: passoDeTexto("Olá!") }),
+    );
+    const conversa = crypto.randomUUID();
+
+    expect(await assistente.abrirConversa({ dono, conversa })).toBeUndefined();
+    expect(
+      await assistente.enviarMensagem({ dono, conversa, texto: "Oi" }),
+    ).toEqual({ ok: false, erro: "CONVERSA_NAO_EXISTE" });
   });
 });

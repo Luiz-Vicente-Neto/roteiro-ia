@@ -1,64 +1,31 @@
-import {
-  createUIMessageStreamResponse,
-  safeValidateUIMessages,
-  type UIMessage,
-} from "ai";
-import { type Assistente, criarAssistente, resolverModelo } from "@/assistente";
-import { criarCatalogo, relogioDoSistema } from "@/catalogo";
-import { criarBasePostgres } from "@/db/base-postgres";
-import { createDb } from "@/db/client";
-import { databaseUrl } from "@/db/env";
+import { createUIMessageStreamResponse } from "ai";
+import { z } from "zod";
+import { donoDaVisita, obterAssistente } from "@/app/servidor";
 
 // Thin layer: wiring only, no rules.
-let assistente: Assistente | undefined;
 
-/**
- * Built on the first request, not on import, so `next build` needs no key.
- * src/instrumentation.ts already checked MODELO and its key at server start.
- */
-function obterAssistente() {
-  if (!assistente) {
-    const relogio = relogioDoSistema();
-    assistente = criarAssistente({
-      modelo: resolverModelo(process.env),
-      catalogo: criarCatalogo({
-        base: criarBasePostgres(createDb(databaseUrl())),
-        relogio,
-      }),
-      relogio,
-    });
-  }
-  return assistente;
-}
-
-/** The text of the Viajante's new message, the last one `useChat` sends. */
-function textoDaNovaMensagem(mensagem: UIMessage | undefined) {
-  if (mensagem?.role !== "user") return undefined;
-  const texto = mensagem.parts
-    .flatMap((p) => (p.type === "text" ? [p.text] : []))
-    .join("\n")
-    .trim();
-  return texto || undefined;
-}
+/** What the chat sends: the Viajante's new text, and the Conversa unless it is a new one. */
+const Corpo = z.object({
+  conversa: z.string().min(1).optional(),
+  texto: z.string().trim().min(1),
+});
 
 export async function POST(request: Request) {
-  const corpo: unknown = await request.json().catch(() => undefined);
-  const validacao = await safeValidateUIMessages({
-    messages: (corpo as { messages?: unknown } | undefined)?.messages,
-  });
-  if (!validacao.success) {
-    return Response.json({ erro: "Mensagens inválidas." }, { status: 400 });
+  const dono = await donoDaVisita();
+  if (!dono) {
+    return Response.json({ erro: "Visita sem dono." }, { status: 401 });
   }
-  const historico = validacao.data.slice(0, -1);
-  const texto = textoDaNovaMensagem(validacao.data.at(-1));
-  if (!texto) {
+  const corpo = Corpo.safeParse(await request.json().catch(() => undefined));
+  if (!corpo.success) {
     return Response.json(
-      { erro: "A última mensagem precisa ser um texto do Viajante." },
+      { erro: "A mensagem precisa ser um texto do Viajante." },
       { status: 400 },
     );
   }
 
-  return createUIMessageStreamResponse({
-    stream: obterAssistente().enviarMensagem({ historico, texto }),
-  });
+  const envio = await obterAssistente().enviarMensagem({ dono, ...corpo.data });
+  if (!envio.ok) {
+    return Response.json({ erro: "Conversa não encontrada." }, { status: 404 });
+  }
+  return createUIMessageStreamResponse({ stream: envio.stream });
 }

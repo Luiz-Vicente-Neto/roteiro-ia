@@ -6,3 +6,9 @@
  */
 export const ASSISTENTE_INDISPONIVEL =
   "O Assistente está indisponível agora, tente de novo em instantes.";
+
+/**
+ * What the panel shows for a tool call the SDK could not run (an unknown
+ * tool, say). The catalog's own refusals come back as results instead.
+ */
+export const FERRAMENTA_FALHOU = "A ferramenta não pôde ser executada.";
