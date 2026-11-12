@@ -53,6 +53,18 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # A schema.ts change without its migration would pass every test,
+      # since the tests apply the migrations, not the schema.
+      - name: Migrations em dia com o schema
+        run: |
+          pnpm exec drizzle-kit check
+          pnpm db:generate
+          if [ -n "$(git status --porcelain drizzle)" ]; then
+            git status --short drizzle
+            echo "::error::schema.ts mudou sem migration. Rode pnpm db:generate e commite o resultado."
+            exit 1
+          fi
+
       - name: Testes em memória
         run: pnpm test
 

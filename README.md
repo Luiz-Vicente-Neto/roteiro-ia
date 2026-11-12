@@ -70,6 +70,8 @@ O `.env` é opcional: sem ele, o projeto usa o Postgres do `docker compose`. Par
 | `pnpm test` | Testes em memória |
 | `pnpm test:db` | Testes contra o Postgres (num banco separado, com sufixo `_test`) |
 
+O `pnpm install` instala um pre-commit ([lefthook.yml](lefthook.yml)) que roda lint nos arquivos staged, typecheck e os testes em memória. O CI roda tudo isso, os testes com Postgres e confere se cada mudança no `schema.ts` veio com a sua migration.
+
 ---
 
 ## 🗺️ Roadmap

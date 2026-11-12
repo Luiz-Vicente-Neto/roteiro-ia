@@ -1,0 +1,12 @@
+# Git hooks, installed by `pnpm install`. The same checks run in CI
+# (.github/workflows/ci.yml); the Postgres tests run only there, since
+# they need Docker.
+pre-commit:
+  parallel: true
+  jobs:
+    - name: lint
+      run: pnpm biome check --staged --no-errors-on-unmatched
+    - name: typecheck
+      run: pnpm typecheck
+    - name: testes
+      run: pnpm test

@@ -1,2 +1,4 @@
 allowBuilds:
   esbuild: true
+  # Its postinstall installs the Git hooks from lefthook.yml.
+  lefthook: true

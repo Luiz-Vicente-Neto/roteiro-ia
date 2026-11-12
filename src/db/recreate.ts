@@ -17,6 +17,16 @@ export async function recreateDatabase(url: string): Promise<void> {
   try {
     await admin`drop database if exists ${admin(name)} with (force)`;
     await admin`create database ${admin(name)}`;
+  } catch (erro) {
+    // This is the first connection of `pnpm test:db` and `pnpm db:reset`,
+    // and a bare ECONNREFUSED does not say what to do.
+    if ((erro as { code?: string }).code === "ECONNREFUSED") {
+      throw new Error(
+        `Postgres fora do ar em ${target.host}. Rode \`pnpm db:up\`; se o Docker não responder, abra o Docker Desktop.`,
+        { cause: erro },
+      );
+    }
+    throw erro;
   } finally {
     await admin.end();
   }
