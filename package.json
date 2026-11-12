@@ -9,6 +9,7 @@
   },
   "scripts": {
     "dev": "pnpm db:up && pnpm db:setup && next dev",
+    "prototipo": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "biome check .",
