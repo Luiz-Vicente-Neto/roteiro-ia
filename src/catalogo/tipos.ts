@@ -134,3 +134,22 @@ export interface VagasOcupadas {
   data: string;
   vagas: number;
 }
+
+/** What kind of Documento a text is. Only the Política da Agência exists so far. */
+export type TipoDeDocumento = "politica-da-agencia";
+
+/** One section of a Documento: what the search finds and the Assistente cites. */
+export interface Trecho {
+  /** Stable: the Documento's slug and the section's, e.g. `politica-da-agencia#cancelamento`. */
+  id: string;
+  documento: { id: string; titulo: string };
+  tipoDoDocumento: TipoDeDocumento;
+  /** The section heading, as written in the Documento. */
+  secao: string;
+  /** What a Citação shows: the section's text, without its heading. */
+  textoCitado: string;
+  /** What gets embedded: `textoCitado` after a fixed prefix naming where it comes from. */
+  textoEmbedado: string;
+  /** SHA-256 of `textoEmbedado`, in hex: it tells a recorded vector that is out of date. */
+  hash: string;
+}

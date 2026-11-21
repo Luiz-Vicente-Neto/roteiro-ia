@@ -1,8 +1,14 @@
 // Server-side wiring shared by the /api/chat route and the pages: no rules here.
 import { cookies } from "next/headers";
-import { type Assistente, criarAssistente, resolverModelo } from "@/assistente";
+import {
+  type Assistente,
+  criarAssistente,
+  resolverEmbeddings,
+  resolverModelo,
+} from "@/assistente";
 import { criarCatalogo, relogioDoSistema } from "@/catalogo";
 import { criarBaseDeConversasPostgres } from "@/db/base-de-conversas-postgres";
+import { criarBaseDeTrechosPostgres } from "@/db/base-de-trechos-postgres";
 import { criarBasePostgres } from "@/db/base-postgres";
 import { createDb } from "@/db/client";
 import { databaseUrl } from "@/db/env";
@@ -12,7 +18,8 @@ let assistente: Assistente | undefined;
 
 /**
  * Built on the first request, not on import, so `next build` needs no key.
- * src/instrumentation.ts already checked MODELO and its key at server start.
+ * src/instrumentation.ts already checked MODELO, EMBEDDINGS, their keys and
+ * the model of the stored Trechos at server start.
  */
 export function obterAssistente(): Assistente {
   if (!assistente) {
@@ -20,7 +27,12 @@ export function obterAssistente(): Assistente {
     const db = createDb(databaseUrl());
     assistente = criarAssistente({
       modelo: resolverModelo(process.env),
-      catalogo: criarCatalogo({ base: criarBasePostgres(db), relogio }),
+      catalogo: criarCatalogo({
+        base: criarBasePostgres(db),
+        trechos: criarBaseDeTrechosPostgres(db),
+        embedarPergunta: resolverEmbeddings(process.env).embedarPergunta,
+        relogio,
+      }),
       conversas: criarBaseDeConversasPostgres(db),
       relogio,
     });

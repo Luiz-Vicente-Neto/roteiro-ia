@@ -6,6 +6,7 @@ import {
   type Pacote,
   relogioFixo,
 } from ".";
+import { buscaNosTextosDeTeste } from "./textos-de-teste";
 
 const HOJE = "2026-12-01T09:00:00-03:00";
 
@@ -89,6 +90,7 @@ const dados: DadosDoCatalogo = {
 };
 
 const catalogo = criarCatalogo({
+  ...buscaNosTextosDeTeste(),
   base: criarBaseEmMemoria(dados),
   relogio: relogioFixo(HOJE),
 });
@@ -190,6 +192,7 @@ describe("buscarPacotes", () => {
       politicaDeCriancas: { aceitaCriancas: false },
     }));
     const muitos = criarCatalogo({
+      ...buscaNosTextosDeTeste(),
       base: criarBaseEmMemoria({
         ...dados,
         pacotes,

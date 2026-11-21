@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { criarBaseEmMemoria, criarCatalogo, relogioFixo } from ".";
 import { catalogoDeTeste } from "./catalogo-de-teste";
+import { buscaNosTextosDeTeste } from "./textos-de-teste";
 
 const AGORA = "2026-12-01T09:00:00-03:00";
 
 function montar() {
   const base = criarBaseEmMemoria(catalogoDeTeste);
-  const catalogo = criarCatalogo({ base, relogio: relogioFixo(AGORA) });
+  const catalogo = criarCatalogo({
+    ...buscaNosTextosDeTeste(),
+    base,
+    relogio: relogioFixo(AGORA),
+  });
   return { base, catalogo };
 }
 
@@ -130,6 +135,7 @@ describe("proporPreReserva", () => {
     "devolve o mesmo erro que consultarPreco ($erro, $caso)",
     async ({ erro, entrada, agora = AGORA }) => {
       const catalogo = criarCatalogo({
+        ...buscaNosTextosDeTeste(),
         base: criarBaseEmMemoria(catalogoDeTeste),
         relogio: relogioFixo(agora),
       });

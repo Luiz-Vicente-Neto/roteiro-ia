@@ -6,7 +6,12 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**", "!!drizzle/meta", "!**/*.md"]
+    "includes": [
+      "**",
+      "!!drizzle/meta",
+      "!**/*.md",
+      "!!src/catalogo/vetores-gravados.json"
+    ]
   },
   "formatter": {
     "indentStyle": "space"

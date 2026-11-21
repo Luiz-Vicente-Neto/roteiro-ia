@@ -1,11 +1,14 @@
 import type { BaseDoCatalogo } from "./base";
+import type { BaseDeTrechos, Embedar } from "./base-de-trechos";
 import { buscar, destinosDaBusca } from "./busca";
 import {
   type EntradaBuscarPacotes,
+  type EntradaBuscarPoliticas,
   type EntradaConsultarPreco,
   type EntradaProporPreReserva,
   type EntradaVerificarDisponibilidade,
   entradaBuscarPacotes,
+  entradaBuscarPoliticas,
   entradaConsultarPreco,
   entradaVerificarDisponibilidade,
   validar,
@@ -27,6 +30,9 @@ const VALIDADE_DA_PROPOSTA_MS = 15 * 60 * 1000;
 
 /** A Pré-reserva holds its Vagas for 24 hours after it is made. */
 const VALIDADE_DA_PRE_RESERVA_MS = 24 * 60 * 60 * 1000;
+
+/** buscar_politicas always hands the model this many Trechos. */
+const TRECHOS_POR_BUSCA = 5;
 
 /** A collision among 32⁴ codes is rare; this many in a row means a bug. */
 const TENTATIVAS_DE_CODIGO = 5;
@@ -98,9 +104,15 @@ function semVagas(restantes: number, doGrupo: number) {
 
 export function criarCatalogo({
   base,
+  trechos,
+  embedarPergunta,
   relogio,
 }: {
   base: BaseDoCatalogo;
+  /** Where buscar_politicas searches the Documentos (docs/adr/0005). */
+  trechos: BaseDeTrechos;
+  /** Same embedding model as the stored Trechos' vectors (docs/adr/0006). */
+  embedarPergunta: Embedar;
   relogio: Relogio;
 }) {
   /** The catalog with the Vagas held by the Pré-reservas active right now. */
@@ -160,6 +172,25 @@ export function criarCatalogo({
         fim: janela?.fim,
         orcamento,
       });
+    },
+
+    async buscarPoliticas(bruta: EntradaBuscarPoliticas) {
+      const validacao = validar(entradaBuscarPoliticas, bruta);
+      if (!validacao.ok) return validacao;
+      const vetor = await embedarPergunta(validacao.valor.pergunta);
+      const encontrados = await trechos.buscarPorSentido(
+        vetor,
+        TRECHOS_POR_BUSCA,
+      );
+      return {
+        ok: true as const,
+        trechos: encontrados.map((t) => ({
+          id: t.id,
+          tituloDoDocumento: t.documento.titulo,
+          secao: t.secao,
+          textoCitado: t.textoCitado,
+        })),
+      };
     },
 
     async verificarDisponibilidade(bruta: EntradaVerificarDisponibilidade) {

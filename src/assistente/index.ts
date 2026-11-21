@@ -22,7 +22,12 @@ export {
   COMECE_UMA_NOVA_CONVERSA,
   CONVERSA_CHEIA,
 } from "./mensagens";
-export { resolverModelo } from "./modelo";
+export {
+  type Embeddings,
+  indiceDosEmbeddings,
+  resolverEmbeddings,
+  resolverModelo,
+} from "./modelo";
 export {
   type Chamada,
   type CotacaoDoCard,

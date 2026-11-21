@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { criarBaseEmMemoria, criarCatalogo, relogioFixo, semente } from ".";
+import {
+  criarBaseEmMemoria,
+  criarCatalogo,
+  lerVetoresGravados,
+  PERGUNTAS_GRAVADAS,
+  relogioFixo,
+  semente,
+  trechosDosDocumentos,
+} from ".";
+import { buscaNosTextosDeTeste } from "./textos-de-teste";
 import type { PeriodoTarifario, Saida } from "./tipos";
 
 const { destinos, hoteis, pacotes, saidas, periodos } = semente;
@@ -184,6 +193,7 @@ describe("semente", () => {
   it('traz Cotações para a pergunta de exemplo "4 dias em Gramado em julho, casal, até R$ 6 mil"', async () => {
     // Asked before the Saídas start, "julho" is the July of the seed's year.
     const catalogo = criarCatalogo({
+      ...buscaNosTextosDeTeste(),
       base: criarBaseEmMemoria(semente),
       relogio: relogioFixo("2026-12-01T09:00:00-03:00"),
     });
@@ -208,5 +218,75 @@ describe("semente", () => {
     expect([...comTemporada].sort()).toEqual(
       destinos.map((d) => d.slug).sort(),
     );
+  });
+});
+
+describe("Trechos dos Documentos", () => {
+  const trechos = trechosDosDocumentos();
+
+  it("quebram a Política da Agência em um Trecho por seção, com id estável", () => {
+    expect(
+      trechos
+        .filter((t) => t.documento.id === "politica-da-agencia")
+        .map((t) => t.id),
+    ).toEqual([
+      "politica-da-agencia#cancelamento",
+      "politica-da-agencia#pagamento",
+      "politica-da-agencia#documentos-de-viagem",
+      "politica-da-agencia#o-que-a-pre-reserva-garante",
+      "politica-da-agencia#criancas",
+      "politica-da-agencia#pets",
+    ]);
+  });
+
+  it("têm ids únicos", () => {
+    const ids = trechos.map((t) => t.id);
+
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it("embedam o texto com o prefixo de origem e citam o texto limpo", () => {
+    const cancelamento = trechos.find(
+      (t) => t.id === "politica-da-agencia#cancelamento",
+    );
+
+    expect(cancelamento).toMatchObject({
+      documento: { id: "politica-da-agencia", titulo: "Política da Agência" },
+      tipoDoDocumento: "politica-da-agencia",
+      secao: "Cancelamento",
+    });
+    expect(cancelamento?.textoCitado).toMatch(/^Você pode cancelar a viagem/);
+    expect(cancelamento?.textoCitado).not.toMatch(/##|Política da Agência ›/);
+    expect(cancelamento?.textoEmbedado).toBe(
+      `Política da Agência › Cancelamento\n\n${cancelamento?.textoCitado}`,
+    );
+  });
+});
+
+describe("vetores gravados", () => {
+  const gravados = lerVetoresGravados();
+
+  it("são do modelo padrão de EMBEDDINGS, com 768 dimensões", () => {
+    expect(gravados.modelo).toBe("google:gemini-embedding-2");
+    expect(gravados.dimensoes).toBe(768);
+  });
+
+  it("têm um vetor com o hash em dia para cada Trecho (se falhar, rode pnpm embeddings:gravar)", () => {
+    const desatualizados = trechosDosDocumentos()
+      .filter((t) => gravados.trechos[t.id]?.hash !== t.hash)
+      .map((t) => t.id);
+
+    expect(desatualizados).toEqual([]);
+  });
+
+  it("têm o vetor de cada pergunta usada nos testes, todos com 768 dimensões", () => {
+    expect(Object.keys(gravados.perguntas).sort()).toEqual(
+      [...PERGUNTAS_GRAVADAS].sort(),
+    );
+    const vetores = [
+      ...Object.values(gravados.perguntas),
+      ...Object.values(gravados.trechos).map((t) => t.vetor),
+    ];
+    expect(vetores.filter((v) => v.length !== 768)).toEqual([]);
   });
 });

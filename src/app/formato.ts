@@ -140,6 +140,15 @@ export function resumoDaChamada({ ferramenta, ok, saida }: Chamada): string {
         ? "Nenhuma Saída serviu"
         : plural(n, "Cotação encontrada", "Cotações encontradas");
     }
+    case "buscar_politicas": {
+      const trechos = r.trechos as {
+        tituloDoDocumento: string;
+        secao: string;
+      }[];
+      return `${plural(trechos.length, "Trecho consultado", "Trechos consultados")}: ${trechos
+        .map((t) => `${t.tituloDoDocumento} › ${t.secao}`)
+        .join("; ")}`;
+    }
     case "consultar_preco":
       return `Total de ${reais(r.total as number)}`;
     case "verificar_disponibilidade":

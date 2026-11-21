@@ -6,6 +6,7 @@ import {
   type PeriodoTarifario,
   relogioFixo,
 } from ".";
+import { buscaNosTextosDeTeste } from "./textos-de-teste";
 
 const HOJE = "2026-12-01T09:00:00-03:00";
 
@@ -103,6 +104,7 @@ const dados: DadosDoCatalogo = {
 };
 
 const catalogo = criarCatalogo({
+  ...buscaNosTextosDeTeste(),
   base: criarBaseEmMemoria(dados),
   relogio: relogioFixo(HOJE),
 });
@@ -213,6 +215,7 @@ describe("consultarPreco", () => {
   it("arredonda meio real para cima, sem erro de ponto flutuante", async () => {
     // R$ 30 × 1,15 = R$ 34,50; a float product gives 3449,9999… centavos.
     const barato = criarCatalogo({
+      ...buscaNosTextosDeTeste(),
       base: criarBaseEmMemoria({
         ...dados,
         pacotes: [{ ...dados.pacotes[0], precoBase: 3000 }],
@@ -369,6 +372,7 @@ describe("consultarPreco", () => {
 
   it("recusa uma Saída no passado com SAIDA_ENCERRADA", async () => {
     const depois = criarCatalogo({
+      ...buscaNosTextosDeTeste(),
       base: criarBaseEmMemoria(dados),
       relogio: relogioFixo("2027-03-07T09:00:00-03:00"),
     });

@@ -16,6 +16,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  vector,
 } from "drizzle-orm/pg-core";
 
 export const destinos = pgTable("destinos", {
@@ -239,3 +240,22 @@ export const itensDeConversa = pgTable(
     ),
   ],
 );
+
+/**
+ * The Documentos' Trechos with their vectors (docs/adr/0005). No ANN index:
+ * with this corpus an exact search takes milliseconds and never loses a
+ * result to a filter (docs/adr/0006). Every row carries the model its vector
+ * came from, since vectors of different models never compare.
+ */
+export const trechos = pgTable("trechos", {
+  id: text().primaryKey(),
+  documentoId: text("documento_id").notNull(),
+  documentoTitulo: text("documento_titulo").notNull(),
+  tipoDoDocumento: text("tipo_do_documento").notNull(),
+  secao: text().notNull(),
+  textoCitado: text("texto_citado").notNull(),
+  textoEmbedado: text("texto_embedado").notNull(),
+  hash: text().notNull(),
+  modelo: text().notNull(),
+  vetor: vector({ dimensions: 768 }).notNull(),
+});

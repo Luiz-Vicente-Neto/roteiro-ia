@@ -118,6 +118,21 @@ export const entradaBuscarPacotes = z.object({
 
 export type EntradaBuscarPacotes = z.input<typeof entradaBuscarPacotes>;
 
+const INFORME_A_PERGUNTA =
+  'Informe a pergunta do viajante em texto, como "posso cancelar?".';
+
+export const entradaBuscarPoliticas = z.object({
+  pergunta: z
+    .string({ error: INFORME_A_PERGUNTA })
+    .trim()
+    .min(1, INFORME_A_PERGUNTA)
+    .describe(
+      "A pergunta do viajante sobre regras e políticas, em português, como ele escreveu ou reformulada para ficar completa (ex.: posso cancelar a viagem?).",
+    ),
+});
+
+export type EntradaBuscarPoliticas = z.input<typeof entradaBuscarPoliticas>;
+
 /** Validates `entrada`, turning schema violations into an ENTRADA_INVALIDA value. */
 export function validar<S extends z.ZodType>(
   schema: S,

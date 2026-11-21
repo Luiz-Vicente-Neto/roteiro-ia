@@ -1,10 +1,12 @@
 import type { z } from "zod";
 import {
   type EntradaBuscarPacotes,
+  type EntradaBuscarPoliticas,
   type EntradaConsultarPreco,
   type EntradaProporPreReserva,
   type EntradaVerificarDisponibilidade,
   entradaBuscarPacotes,
+  entradaBuscarPoliticas,
   entradaConsultarPreco,
   entradaProporPreReserva,
   entradaVerificarDisponibilidade,
@@ -30,6 +32,9 @@ export interface Ferramenta {
 
 interface Operacoes {
   buscarPacotes(entrada: EntradaBuscarPacotes): Promise<ResultadoDeFerramenta>;
+  buscarPoliticas(
+    entrada: EntradaBuscarPoliticas,
+  ): Promise<ResultadoDeFerramenta>;
   consultarPreco(
     entrada: EntradaConsultarPreco,
   ): Promise<ResultadoDeFerramenta>;
@@ -57,6 +62,16 @@ export function criarFerramentas(operacoes: Operacoes): Ferramenta[] {
       schemaDeEntrada: entradaBuscarPacotes,
       executar: (entrada) =>
         operacoes.buscarPacotes(entrada as EntradaBuscarPacotes),
+    },
+    {
+      nome: "buscar_politicas",
+      descricao:
+        "Busca nos textos do catálogo os Trechos que respondem a uma pergunta sobre regras e políticas da agência: cancelamento e reembolso, pagamento, documentos de viagem, o que a Pré-reserva garante, crianças e pets. " +
+        "Recebe a pergunta do viajante e devolve os 5 Trechos mais próximos dela, cada um com id, tituloDoDocumento, secao e textoCitado. Nem todos respondem à pergunta: use só os que respondem e, se nenhum responder, diga que não sabe. " +
+        "Nunca traz preço, Vagas nem datas de Saída: esses valores vêm só das outras ferramentas.",
+      schemaDeEntrada: entradaBuscarPoliticas,
+      executar: (entrada) =>
+        operacoes.buscarPoliticas(entrada as EntradaBuscarPoliticas),
     },
     {
       nome: "consultar_preco",

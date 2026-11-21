@@ -7,6 +7,7 @@ import {
 import { describe, expect, it } from "vitest";
 import { criarBaseEmMemoria, criarCatalogo, relogioFixo } from "../catalogo";
 import { catalogoDeTeste } from "../catalogo/catalogo-de-teste";
+import { buscaNosTextosDeTeste } from "../catalogo/textos-de-teste";
 import {
   ASSISTENTE_INDISPONIVEL,
   COMECE_UMA_NOVA_CONVERSA,
@@ -19,6 +20,7 @@ import {
 
 const relogio = relogioFixo("2026-12-01T09:00:00-03:00");
 const catalogo = criarCatalogo({
+  ...buscaNosTextosDeTeste(),
   base: criarBaseEmMemoria(catalogoDeTeste),
   relogio,
 });
@@ -116,7 +118,7 @@ async function enviar(
 }
 
 describe("enviarMensagem", () => {
-  it("oferece ao modelo exatamente as quatro ferramentas do catálogo, sem nenhuma de confirmar", async () => {
+  it("oferece ao modelo exatamente as cinco ferramentas do catálogo, sem nenhuma de confirmar", async () => {
     const modelo = new MockLanguageModelV4({ doStream: passoDeTexto("Olá!") });
 
     await enviar(modelo);
@@ -124,6 +126,7 @@ describe("enviarMensagem", () => {
     const nomes = (modelo.doStreamCalls[0]?.tools ?? []).map((t) => t.name);
     expect(nomes.sort()).toEqual([
       "buscar_pacotes",
+      "buscar_politicas",
       "consultar_preco",
       "propor_pre_reserva",
       "verificar_disponibilidade",
@@ -415,6 +418,46 @@ describe("chamadasDaResposta", () => {
         saida: expect.objectContaining({ ok: false, erro: "ENTRADA_INVALIDA" }),
       },
     ]);
+  });
+});
+
+describe("buscar_politicas no chat", () => {
+  it('"posso cancelar?" chama buscar_politicas, e o Trecho de cancelamento chega ao modelo e ao painel', async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("buscar_politicas", { pergunta: "posso cancelar?" }),
+        passoDeTexto("Pode, sim: com 30 dias ou mais, o reembolso é integral."),
+      ],
+    });
+
+    const mensagem = await resposta(modelo, "posso cancelar?");
+
+    const [chamada] = chamadasDaResposta(mensagem);
+    if (!chamada) throw new Error("O modelo não chamou nenhuma ferramenta");
+    expect(chamada).toMatchObject({
+      ferramenta: "buscar_politicas",
+      ok: true,
+      entrada: { pergunta: "posso cancelar?" },
+    });
+    const { trechos } = chamada.saida as { trechos: { id: string }[] };
+    expect(trechos.map((t) => t.id)).toContain(
+      "politica-da-agencia#cancelamento",
+    );
+    expect(JSON.stringify(resultadoVistoPeloModelo(modelo))).toContain(
+      "Você pode cancelar a viagem a qualquer momento",
+    );
+  });
+
+  it("instrui o modelo a buscar as políticas e a dizer que não sabe quando os Trechos não respondem", async () => {
+    const modelo = new MockLanguageModelV4({ doStream: passoDeTexto("Olá!") });
+
+    await enviar(modelo);
+
+    const sistema = modelo.doStreamCalls[0]?.prompt.find(
+      (m) => m.role === "system",
+    );
+    expect(sistema?.content).toMatch(/buscar_politicas/);
+    expect(sistema?.content).toMatch(/não sabe/);
   });
 });
 
@@ -779,6 +822,7 @@ describe("Proposta", () => {
   function assistenteComPropostas(...propostas: (typeof gramado)[]) {
     const tempo = relogioQueAnda("2026-12-01T09:00:00-03:00");
     const catalogoNovo = criarCatalogo({
+      ...buscaNosTextosDeTeste(),
       base: criarBaseEmMemoria(catalogoDeTeste),
       relogio: tempo.relogio,
     });

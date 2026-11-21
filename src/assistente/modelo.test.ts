@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { resolverModelo } from "./modelo";
+import {
+  indiceDosEmbeddings,
+  resolverEmbeddings,
+  resolverModelo,
+} from "./modelo";
 
 describe("resolverModelo", () => {
   it.each([
@@ -86,5 +90,59 @@ describe("resolverModelo", () => {
         GOOGLE_GENERATIVE_AI_API_KEY: "",
       }),
     ).toThrow(/GOOGLE_GENERATIVE_AI_API_KEY/);
+  });
+});
+
+describe("indiceDosEmbeddings", () => {
+  it("usa o gemini-embedding-2 do Google, com 768 dimensões, quando EMBEDDINGS não está definido", () => {
+    expect(indiceDosEmbeddings({})).toEqual({
+      modelo: "google:gemini-embedding-2",
+      dimensoes: 768,
+    });
+  });
+
+  it("lê o provedor:modelo de EMBEDDINGS, sem precisar da chave", () => {
+    expect(
+      indiceDosEmbeddings({ EMBEDDINGS: "openai:text-embedding-3-large" }),
+    ).toEqual({ modelo: "openai:text-embedding-3-large", dimensoes: 768 });
+  });
+
+  it("recusa um provedor sem embeddings, listando os que têm", () => {
+    expect(() =>
+      indiceDosEmbeddings({ EMBEDDINGS: "anthropic:claude-haiku-5-5" }),
+    ).toThrow(/provedor "anthropic" desconhecido.*google, openai/i);
+  });
+
+  it.each(["gemini-embedding-2", "google:", ":gemini-embedding-2"])(
+    "recusa o valor malformado %j, mostrando o formato esperado",
+    (EMBEDDINGS) => {
+      expect(() => indiceDosEmbeddings({ EMBEDDINGS })).toThrow(
+        /EMBEDDINGS.*provedor:modelo/,
+      );
+    },
+  );
+});
+
+describe("resolverEmbeddings", () => {
+  it("monta as funções de embedding do modelo escolhido, informando o índice", () => {
+    const embeddings = resolverEmbeddings({
+      GOOGLE_GENERATIVE_AI_API_KEY: "chave-de-teste",
+    });
+
+    expect(embeddings.indice).toEqual({
+      modelo: "google:gemini-embedding-2",
+      dimensoes: 768,
+    });
+    expect(embeddings.embedarPergunta).toBeTypeOf("function");
+    expect(embeddings.embedarTrechos).toBeTypeOf("function");
+  });
+
+  it("recusa quando falta a chave do provedor de embeddings", () => {
+    expect(() =>
+      resolverEmbeddings({
+        EMBEDDINGS: "openai:text-embedding-3-large",
+        GOOGLE_GENERATIVE_AI_API_KEY: "chave-de-teste",
+      }),
+    ).toThrow(/EMBEDDINGS=openai:text-embedding-3-large.*OPENAI_API_KEY/);
   });
 });

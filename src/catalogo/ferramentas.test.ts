@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { criarBaseEmMemoria, criarCatalogo, relogioFixo } from ".";
 import { catalogoDeTeste } from "./catalogo-de-teste";
+import { buscaNosTextosDeTeste } from "./textos-de-teste";
 
 const catalogo = criarCatalogo({
+  ...buscaNosTextosDeTeste(),
   base: criarBaseEmMemoria(catalogoDeTeste),
   relogio: relogioFixo("2026-12-01T09:00:00-03:00"),
 });
@@ -14,11 +16,12 @@ function ferramenta(nome: string) {
 }
 
 describe("ferramentas", () => {
-  it("são exatamente as quatro que o modelo pode chamar, sem nenhuma forma de confirmar uma Pré-reserva", () => {
+  it("são exatamente as cinco que o modelo pode chamar, sem nenhuma forma de confirmar uma Pré-reserva", () => {
     const nomes = catalogo.ferramentas.map((f) => f.nome);
 
     expect(nomes.sort()).toEqual([
       "buscar_pacotes",
+      "buscar_politicas",
       "consultar_preco",
       "propor_pre_reserva",
       "verificar_disponibilidade",

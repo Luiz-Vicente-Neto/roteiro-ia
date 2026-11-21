@@ -1,6 +1,7 @@
 import { afterAll, expect, inject, it } from "vitest";
 import { criarCatalogo, relogioFixo } from "../catalogo";
 import { testarContratoDaBase } from "../catalogo/base.contrato";
+import { buscaNosTextosDeTeste } from "../catalogo/textos-de-teste";
 import { criarBasePostgres, substituirCatalogo } from "./base-postgres";
 import { createDb } from "./client";
 import { seed } from "./seed";
@@ -17,6 +18,7 @@ testarContratoDaBase("Postgres", async (dados) => {
 it("o catálogo responde verificarDisponibilidade com a Base em Postgres carregada pelo seed", async () => {
   await seed(db);
   const catalogo = criarCatalogo({
+    ...buscaNosTextosDeTeste(),
     base: criarBasePostgres(db),
     relogio: relogioFixo("2026-12-01T09:00:00-03:00"),
   });
@@ -40,6 +42,7 @@ it("várias confirmações simultâneas disputando as últimas Vagas: só as que
   // 2027-01-23 of gramado-serra-azul-3n has 3 Vagas in the seed.
   const saida = { pacote: "gramado-serra-azul-3n", data: "2027-01-23" };
   const catalogo = criarCatalogo({
+    ...buscaNosTextosDeTeste(),
     base: criarBasePostgres(db),
     relogio: relogioFixo("2026-12-01T09:00:00-03:00"),
   });

@@ -6,12 +6,17 @@ import {
   relogioFixo,
 } from ".";
 import { catalogoDeTeste } from "./catalogo-de-teste";
+import { buscaNosTextosDeTeste } from "./textos-de-teste";
 
 const AGORA = "2026-12-01T09:00:00-03:00";
 
 /** The same Base seen at another instant, as if the clock had moved on. */
 function catalogoEm(base: BaseDoCatalogo, instante: string) {
-  return criarCatalogo({ base, relogio: relogioFixo(instante) });
+  return criarCatalogo({
+    ...buscaNosTextosDeTeste(),
+    base,
+    relogio: relogioFixo(instante),
+  });
 }
 
 function montar(base = criarBaseEmMemoria(catalogoDeTeste)) {
