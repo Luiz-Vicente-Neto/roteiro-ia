@@ -10,6 +10,19 @@ import {
 } from "../src/catalogo";
 import { loadDotEnv } from "../src/db/env";
 
+// A provider failure (a 429 from the quota, a bad key) would print the AI
+// SDK's whole stack, which buries the cause. One line says it, and nothing
+// is written: the JSON is only rewritten at the end.
+process.on("uncaughtException", (erro) => {
+  const { statusCode } = erro as { statusCode?: number };
+  console.error(
+    `✗ Nada foi gravado. ${statusCode ? `HTTP ${statusCode}: ` : ""}${erro.message}`,
+  );
+  // exitCode, not exit(): exiting with sockets still open trips a libuv
+  // assertion on Windows.
+  process.exitCode = 1;
+});
+
 loadDotEnv();
 const { indice, embedarPergunta, embedarTrechos } = resolverEmbeddings(
   process.env,
