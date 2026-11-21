@@ -1,6 +1,6 @@
 // Reads an Assistente answer for the screen. Nothing from the server side, so the browser can import it.
 import { getToolName, isToolUIPart, type UIMessage } from "ai";
-import type { Cotacao } from "../catalogo";
+import type { Cotacao, TrechoDaBusca } from "../catalogo";
 
 /** A card's Cotação: from buscar_pacotes it also lists the other dates that fit. */
 export type CotacaoDoCard = Cotacao & { outrasSaidas?: string[] };
@@ -110,6 +110,130 @@ export function propostasDaResposta(mensagem: UIMessage): PropostaDoCard[] {
     const { id, cotacao, expiraEm } = chamada.saida as PropostaDoCard;
     return [{ id, cotacao, expiraEm }];
   });
+}
+
+/** A Citação the screen shows as the footnote `[numero]`. */
+export interface Citacao {
+  numero: number;
+  /** As kept in the Conversa's history: the text the Assistente read then. */
+  trecho: TrechoDaBusca;
+}
+
+/** One piece of an answer's text: plain text, or the place of a Citação. */
+export type PedacoDoTexto =
+  | { tipo: "texto"; texto: string }
+  | { tipo: "citacao"; numero: number };
+
+/** An answer's text with its Citações read, as the screen shows it. */
+export interface TextoDaResposta {
+  pedacos: PedacoDoTexto[];
+  /** By `numero`, from 1. */
+  citacoes: Citacao[];
+}
+
+const INICIO_DO_MARCADOR = "[[trecho:";
+
+/**
+ * How the model marks a Citação in its text: the Trecho's stable id inside
+ * `[[trecho:…]]`. The system prompt shows the model this same format.
+ */
+export function marcadorDeCitacao(idDoTrecho: string): string {
+  return `${INICIO_DO_MARCADOR}${idDoTrecho}]]`;
+}
+
+/**
+ * Any `[[trecho:…]]`, even a badly written one, so none reaches the screen.
+ * The spaces before it go too, so the note sits on the word.
+ */
+const MARCADOR = /\s*\[\[trecho:\s*([^\]]*?)\s*\]\]/g;
+
+/**
+ * Reads the Citações of `mensagem`. A marker counts only when its id came back
+ * from a buscar_politicas of the same Conversa, in `mensagem` or before it in
+ * `conversa` (the whole Conversa, or the messages before `mensagem`); the
+ * others leave the text. Numbers follow the order of
+ * appearance, and the same Trecho keeps its number. The quoted text is the one
+ * kept in the history, the one the Assistente read then.
+ */
+export function textoDaResposta(
+  mensagem: UIMessage,
+  conversa: UIMessage[],
+): TextoDaResposta {
+  const consultados = trechosAte(mensagem, conversa);
+  const pedacos: PedacoDoTexto[] = [];
+  const citacoes: Citacao[] = [];
+  const texto = textoDaMensagem(mensagem);
+  let desde = 0;
+  for (const marcador of texto.matchAll(MARCADOR)) {
+    acrescentarTexto(pedacos, texto.slice(desde, marcador.index));
+    desde = marcador.index + marcador[0].length;
+    const trecho = consultados.get(marcador[1] ?? "");
+    if (!trecho) continue;
+    let citacao = citacoes.find((c) => c.trecho.id === trecho.id);
+    if (!citacao) {
+      citacao = { numero: citacoes.length + 1, trecho };
+      citacoes.push(citacao);
+    }
+    pedacos.push({ tipo: "citacao", numero: citacao.numero });
+  }
+  acrescentarTexto(pedacos, semMarcadorPelaMetade(texto.slice(desde)));
+  return { pedacos, citacoes };
+}
+
+/**
+ * While the answer streams, its end may be a marker still being written:
+ * hidden until it closes, so the Viajante never sees `[[trech`.
+ */
+function semMarcadorPelaMetade(texto: string): string {
+  const inicio = texto.lastIndexOf("[[");
+  if (inicio === -1) return texto;
+  const resto = texto.slice(inicio);
+  const pelaMetade =
+    !resto.includes("]]") &&
+    (resto.startsWith(INICIO_DO_MARCADOR) ||
+      INICIO_DO_MARCADOR.startsWith(resto));
+  return pelaMetade ? texto.slice(0, inicio).trimEnd() : texto;
+}
+
+/** Joins with the previous text piece, so a removed marker leaves no seam. */
+function acrescentarTexto(pedacos: PedacoDoTexto[], texto: string): void {
+  if (!texto) return;
+  const ultimo = pedacos.at(-1);
+  if (ultimo?.tipo === "texto") ultimo.texto += texto;
+  else pedacos.push({ tipo: "texto", texto });
+}
+
+/**
+ * The Trechos buscar_politicas returned in `conversa` up to `mensagem`, and in
+ * `mensagem` itself, by id. A later result of the same Trecho wins.
+ */
+function trechosAte(
+  mensagem: UIMessage,
+  conversa: UIMessage[],
+): Map<string, TrechoDaBusca> {
+  const ate = conversa.findIndex((m) => m.id === mensagem.id);
+  const lidas = [...(ate === -1 ? conversa : conversa.slice(0, ate)), mensagem];
+  return new Map(
+    lidas
+      .flatMap(chamadasDaResposta)
+      .flatMap(trechosDaChamada)
+      .map((t) => [t.id, t] as const),
+  );
+}
+
+/** The Trechos one call returned: none unless it is a buscar_politicas that worked. */
+export function trechosDaChamada(chamada: Chamada): TrechoDaBusca[] {
+  if (!chamada.ok || chamada.ferramenta !== "buscar_politicas") return [];
+  // The catalog is the only source of this result (see catalogo/catalogo.ts).
+  return (chamada.saida as { trechos: TrechoDaBusca[] }).trechos;
+}
+
+/** All the text of a message, as written: markers and all. */
+export function textoDaMensagem(mensagem: UIMessage | undefined): string {
+  if (!mensagem) return "";
+  return mensagem.parts
+    .flatMap((p) => (p.type === "text" ? [p.text] : []))
+    .join("");
 }
 
 function deuCerto(saida: unknown): boolean {

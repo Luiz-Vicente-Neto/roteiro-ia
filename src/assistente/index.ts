@@ -30,12 +30,18 @@ export {
 } from "./modelo";
 export {
   type Chamada,
+  type Citacao,
   type CotacaoDoCard,
   cardDetalhado,
   cardsDaResposta,
   chamadasDaResposta,
   chaveDoCard,
   type EstadoDaProposta,
+  type PedacoDoTexto,
   type PropostaDoCard,
   propostasDaResposta,
+  type TextoDaResposta,
+  textoDaMensagem,
+  textoDaResposta,
+  trechosDaChamada,
 } from "./resposta";

@@ -16,6 +16,10 @@ import {
   chaveDoCard,
   criarAssistente,
   criarBaseDeConversasEmMemoria,
+  mensagensDe,
+  type TextoDaResposta,
+  textoDaResposta,
+  trechosDaChamada,
 } from ".";
 
 const relogio = relogioFixo("2026-12-01T09:00:00-03:00");
@@ -458,6 +462,222 @@ describe("buscar_politicas no chat", () => {
     );
     expect(sistema?.content).toMatch(/buscar_politicas/);
     expect(sistema?.content).toMatch(/não sabe/);
+  });
+});
+
+const CANCELAMENTO = "politica-da-agencia#cancelamento";
+
+/** The answer's text pieces as the screen writes them: a Citação as `[n]`. */
+function comoNaTela({ pedacos }: TextoDaResposta): string {
+  return pedacos
+    .map((p) => (p.tipo === "texto" ? p.texto : `[${p.numero}]`))
+    .join("");
+}
+
+describe("Citações", () => {
+  it("instrui o modelo a marcar cada afirmação tirada de um Trecho com o id dele", async () => {
+    const modelo = new MockLanguageModelV4({ doStream: passoDeTexto("Olá!") });
+
+    await enviar(modelo);
+
+    const sistema = modelo.doStreamCalls[0]?.prompt.find(
+      (m) => m.role === "system",
+    );
+    expect(sistema?.content).toContain(`[[trecho:${CANCELAMENTO}]]`);
+  });
+
+  it('"posso cancelar?" mostra a resposta com a nota [1], que abre o Trecho de cancelamento', async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("buscar_politicas", { pergunta: "posso cancelar?" }),
+        passoDeTexto(
+          `Pode, sim: com 30 dias ou mais, o reembolso é integral [[trecho:${CANCELAMENTO}]].`,
+        ),
+      ],
+    });
+
+    const mensagem = await resposta(modelo, "posso cancelar?");
+    const texto = textoDaResposta(mensagem, [mensagem]);
+
+    expect(comoNaTela(texto)).toBe(
+      "Pode, sim: com 30 dias ou mais, o reembolso é integral[1].",
+    );
+    expect(texto.citacoes).toEqual([
+      {
+        numero: 1,
+        trecho: {
+          id: CANCELAMENTO,
+          tituloDoDocumento: "Política da Agência",
+          secao: "Cancelamento",
+          textoCitado: expect.stringContaining(
+            "Você pode cancelar a viagem a qualquer momento",
+          ),
+        },
+      },
+    ]);
+  });
+
+  it("um marcador com id que nenhuma ferramenta devolveu na Conversa não vira nota e sai do texto", async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("buscar_politicas", { pergunta: "posso cancelar?" }),
+        passoDeTexto(
+          "Pode, sim [[trecho:politica-da-agencia#inventada]] e sem multa [[trecho:hotel-qualquer#pets]].",
+        ),
+      ],
+    });
+
+    const mensagem = await resposta(modelo, "posso cancelar?");
+    const texto = textoDaResposta(mensagem, [mensagem]);
+
+    expect(comoNaTela(texto)).toBe("Pode, sim e sem multa.");
+    expect(texto.citacoes).toEqual([]);
+  });
+
+  it("a mesma fonte citada duas vezes usa o mesmo número, e as outras seguem a ordem de aparição", async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("buscar_politicas", { pergunta: "posso cancelar?" }),
+        passoDeFerramenta("buscar_politicas", {
+          pergunta: "como posso pagar?",
+        }),
+        passoDeTexto(
+          `Pode cancelar [[trecho:${CANCELAMENTO}]]. Paga com Pix [[trecho:politica-da-agencia#pagamento]]. O reembolso volta em 10 dias [[trecho:${CANCELAMENTO}]].`,
+        ),
+      ],
+    });
+
+    const mensagem = await resposta(modelo, "posso cancelar? como pago?");
+    const texto = textoDaResposta(mensagem, [mensagem]);
+
+    expect(comoNaTela(texto)).toBe(
+      "Pode cancelar[1]. Paga com Pix[2]. O reembolso volta em 10 dias[1].",
+    );
+    expect(texto.citacoes.map((c) => [c.numero, c.trecho.id])).toEqual([
+      [1, CANCELAMENTO],
+      [2, "politica-da-agencia#pagamento"],
+    ]);
+  });
+
+  it("um marcador mal escrito, vazio ou com espaços, também sai do texto, e o id com espaços em volta ainda vale", async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("buscar_politicas", { pergunta: "posso cancelar?" }),
+        passoDeTexto(
+          `Pode, sim [[trecho: ${CANCELAMENTO} ]], sem multa [[trecho:]] nem taxa [[trecho:id com espaço]].`,
+        ),
+      ],
+    });
+
+    const mensagem = await resposta(modelo, "posso cancelar?");
+
+    expect(comoNaTela(textoDaResposta(mensagem, [mensagem]))).toBe(
+      "Pode, sim[1], sem multa nem taxa.",
+    );
+  });
+
+  it("o texto citado é o guardado no histórico da Conversa, mesmo que o Trecho tenha mudado depois", () => {
+    const lidoNaHora = {
+      id: CANCELAMENTO,
+      tituloDoDocumento: "Política da Agência",
+      secao: "Cancelamento",
+      textoCitado: "O texto que o Assistente leu naquela hora.",
+    };
+    const pergunta: UIMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [
+        {
+          type: "tool-buscar_politicas",
+          toolCallId: "c1",
+          state: "output-available",
+          input: { pergunta: "posso cancelar?" },
+          output: { ok: true, trechos: [lidoNaHora] },
+        },
+        { type: "text", text: `Pode, sim [[trecho:${CANCELAMENTO}]].` },
+      ],
+    };
+
+    expect(textoDaResposta(pergunta, [pergunta]).citacoes).toEqual([
+      { numero: 1, trecho: lidoNaHora },
+    ]);
+  });
+
+  it("durante o stream, um marcador ainda incompleto não aparece no texto", () => {
+    const pelaMetade: UIMessage = {
+      id: "m1",
+      role: "assistant",
+      parts: [{ type: "text", text: "Pode, sim [[trecho:politica-da-ag" }],
+    };
+
+    expect(comoNaTela(textoDaResposta(pelaMetade, []))).toBe("Pode, sim");
+  });
+
+  it("ao reabrir a Conversa, as mesmas Citações aparecem, também de um Trecho devolvido numa resposta anterior", async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("buscar_politicas", { pergunta: "posso cancelar?" }),
+        passoDeTexto(`Pode, sim [[trecho:${CANCELAMENTO}]].`),
+        passoDeTexto(`Com 30 dias, 100% de volta [[trecho:${CANCELAMENTO}]].`),
+      ],
+    });
+    const assistente = assistenteCom(modelo);
+    const primeira = await assistente.enviarMensagem({
+      dono,
+      texto: "posso cancelar?",
+    });
+    if (!primeira.ok) throw new Error(primeira.erro);
+    await convertReadableStreamToArray(primeira.stream);
+    const segunda = await assistente.enviarMensagem({
+      dono,
+      conversa: primeira.conversa,
+      texto: "e quanto volta?",
+    });
+    if (!segunda.ok) throw new Error(segunda.erro);
+    await convertReadableStreamToArray(segunda.stream);
+
+    const itens = await assistente.abrirConversa({
+      dono,
+      conversa: primeira.conversa,
+    });
+    const mensagens = mensagensDe(itens ?? []);
+    const respostas = mensagens.filter((m) => m.role === "assistant");
+    const textos = respostas.map((m) => textoDaResposta(m, mensagens));
+
+    expect(textos.map(comoNaTela)).toEqual([
+      "Pode, sim[1].",
+      "Com 30 dias, 100% de volta[1].",
+    ]);
+    // The text the Assistente read then, kept with the first answer's tool result.
+    const [lidoNaPrimeira] = chamadasDaResposta(
+      respostas[0] as UIMessage,
+    ).flatMap(trechosDaChamada);
+    expect(lidoNaPrimeira?.id).toBe(CANCELAMENTO);
+    expect(textos[1]?.citacoes).toEqual([
+      { numero: 1, trecho: lidoNaPrimeira },
+    ]);
+  });
+
+  it("o painel lista todos os Trechos consultados, inclusive os não citados", async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("buscar_politicas", { pergunta: "posso cancelar?" }),
+        passoDeTexto(`Pode, sim [[trecho:${CANCELAMENTO}]].`),
+      ],
+    });
+
+    const mensagem = await resposta(modelo, "posso cancelar?");
+
+    const devolvido = await catalogo.buscarPoliticas({
+      pergunta: "posso cancelar?",
+    });
+    if (!devolvido.ok || !("trechos" in devolvido)) {
+      throw new Error("A busca do teste precisa dar certo");
+    }
+    expect(devolvido.trechos).toHaveLength(5);
+    expect(chamadasDaResposta(mensagem).flatMap(trechosDaChamada)).toEqual(
+      devolvido.trechos,
+    );
   });
 });
 

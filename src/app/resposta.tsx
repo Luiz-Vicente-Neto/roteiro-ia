@@ -4,10 +4,14 @@ import Image from "next/image";
 import { useState } from "react";
 import {
   type Chamada,
+  type Citacao,
   type CotacaoDoCard,
   cardDetalhado,
   chaveDoCard,
+  type TextoDaResposta,
+  trechosDaChamada,
 } from "@/assistente/resposta";
+import type { TrechoDaBusca } from "@/catalogo";
 import {
   dataCurta,
   dataLonga,
@@ -143,8 +147,76 @@ function CardDeCotacao({
   );
 }
 
-/** "Como cheguei nessa resposta": every tool call of the answer, in order. */
-export function PainelDeChamadas({ chamadas }: { chamadas: Chamada[] }) {
+/**
+ * The Assistente's text with each Citação as a footnote `[n]`. A click opens
+ * the Trecho below the text (Documento, section, quoted text); another click
+ * on the same note closes it.
+ */
+export function TextoComCitacoes({
+  texto: { pedacos, citacoes },
+}: {
+  texto: TextoDaResposta;
+}) {
+  const [aberta, setAberta] = useState<number>();
+  const citacao = citacoes.find((c) => c.numero === aberta);
+  return (
+    <>
+      {pedacos.map((p, i) =>
+        p.tipo === "texto" ? (
+          // biome-ignore lint/suspicious/noArrayIndexKey: the pieces only grow at the end.
+          <span key={i}>{p.texto}</span>
+        ) : (
+          <button
+            // biome-ignore lint/suspicious/noArrayIndexKey: the pieces only grow at the end.
+            key={i}
+            type="button"
+            onClick={() =>
+              setAberta(aberta === p.numero ? undefined : p.numero)
+            }
+            aria-expanded={aberta === p.numero}
+            aria-label={`Citação ${p.numero}`}
+            className={`ml-0.5 align-super font-semibold text-xs hover:underline ${
+              aberta === p.numero ? "text-teal-900" : "text-teal-700"
+            }`}
+          >
+            [{p.numero}]
+          </button>
+        ),
+      )}
+      {citacao && (
+        <span className="mt-2 block rounded-xl bg-stone-50 p-3 text-sm ring-1 ring-stone-200">
+          <span className="block font-medium text-stone-700">
+            [{citacao.numero}] <OrigemDoTrecho trecho={citacao.trecho} />
+          </span>
+          <span className="mt-1 block text-stone-600">
+            {citacao.trecho.textoCitado}
+          </span>
+        </span>
+      )}
+    </>
+  );
+}
+
+function OrigemDoTrecho({ trecho }: { trecho: TrechoDaBusca }) {
+  return (
+    <>
+      {trecho.tituloDoDocumento} › {trecho.secao}
+    </>
+  );
+}
+
+/**
+ * "Como cheguei nessa resposta": every tool call of the answer, in order. A
+ * buscar_politicas lists every Trecho it returned, cited or not, with the
+ * number of its note when the answer cites it.
+ */
+export function PainelDeChamadas({
+  chamadas,
+  citacoes,
+}: {
+  chamadas: Chamada[];
+  citacoes: Citacao[];
+}) {
   const [aberto, setAberto] = useState(false);
   if (chamadas.length === 0) return null;
   return (
@@ -181,6 +253,10 @@ export function PainelDeChamadas({ chamadas }: { chamadas: Chamada[] }) {
               >
                 {resumoDaChamada(ch)}
               </p>
+              <ListaDeTrechos
+                trechos={trechosDaChamada(ch)}
+                citacoes={citacoes}
+              />
               <Json rotulo="Entrada" valor={ch.entrada} />
               {/* Not "Saída": that word is a Pacote's departure here. */}
               <Json rotulo="Resultado" valor={ch.saida} />
@@ -189,6 +265,42 @@ export function PainelDeChamadas({ chamadas }: { chamadas: Chamada[] }) {
         </ol>
       )}
     </div>
+  );
+}
+
+function ListaDeTrechos({
+  trechos,
+  citacoes,
+}: {
+  trechos: TrechoDaBusca[];
+  citacoes: Citacao[];
+}) {
+  if (trechos.length === 0) return null;
+  return (
+    <ul className="mt-1 flex flex-col gap-1">
+      {trechos.map((t) => {
+        const numero = citacoes.find((c) => c.trecho.id === t.id)?.numero;
+        return (
+          <li key={t.id}>
+            <details>
+              <summary className="cursor-pointer text-stone-600">
+                {numero ? (
+                  <span className="font-semibold text-teal-700">
+                    [{numero}]{" "}
+                  </span>
+                ) : (
+                  <span className="text-stone-400">não citado · </span>
+                )}
+                <OrigemDoTrecho trecho={t} />
+              </summary>
+              <p className="mt-1 whitespace-pre-wrap rounded-lg bg-white p-3 text-stone-600 ring-1 ring-stone-200">
+                {t.textoCitado}
+              </p>
+            </details>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
 

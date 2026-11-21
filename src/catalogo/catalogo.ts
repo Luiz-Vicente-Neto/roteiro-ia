@@ -26,7 +26,13 @@ import { gerarCodigoDaPreReserva } from "./pre-reserva";
 import { cotar } from "./preco";
 import { gerarIdDaProposta } from "./proposta";
 import type { Relogio } from "./relogio";
-import type { DadosDoCatalogo, Destino, Pacote, PreReserva } from "./tipos";
+import type {
+  DadosDoCatalogo,
+  Destino,
+  Pacote,
+  PreReserva,
+  TrechoDaBusca,
+} from "./tipos";
 import { type CatalogoVigente, ocupacao, vagasRestantes } from "./vagas";
 
 const SUGESTOES_DE_SAIDA = 3;
@@ -277,12 +283,14 @@ export function criarCatalogo({
       );
       return {
         ok: true as const,
-        trechos: encontrados.map((t) => ({
-          id: t.id,
-          tituloDoDocumento: t.documento.titulo,
-          secao: t.secao,
-          textoCitado: t.textoCitado,
-        })),
+        trechos: encontrados.map(
+          (t): TrechoDaBusca => ({
+            id: t.id,
+            tituloDoDocumento: t.documento.titulo,
+            secao: t.secao,
+            textoCitado: t.textoCitado,
+          }),
+        ),
       };
     },
 

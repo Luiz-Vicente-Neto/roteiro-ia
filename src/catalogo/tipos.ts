@@ -161,3 +161,11 @@ export interface Trecho {
   /** SHA-256 of `textoEmbedado`, in hex: it tells a recorded vector that is out of date. */
   hash: string;
 }
+
+/** A Trecho as buscar_politicas hands it to the model: what a Citação shows. */
+export interface TrechoDaBusca {
+  id: string;
+  tituloDoDocumento: string;
+  secao: string;
+  textoCitado: string;
+}

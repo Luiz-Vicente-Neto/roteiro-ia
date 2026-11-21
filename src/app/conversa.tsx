@@ -22,17 +22,22 @@ import {
   type EstadoDaProposta,
   type PropostaDoCard,
   propostasDaResposta,
+  textoDaMensagem,
+  textoDaResposta,
 } from "@/assistente/resposta";
 import { confirmarProposta, descartarProposta } from "./acoes";
 import { CardDeProposta, type EstadoDoCard, LinhaDeEvento } from "./proposta";
-import { CardsDeCotacao, PainelDeChamadas } from "./resposta";
+import { CardsDeCotacao, PainelDeChamadas, TextoComCitacoes } from "./resposta";
 
 /** Sends only the new text: the server holds the Conversa's history. */
 function transporte(conversa: { current: string | undefined }) {
   return new DefaultChatTransport({
     api: "/api/chat",
     prepareSendMessagesRequest: ({ messages }) => ({
-      body: { conversa: conversa.current, texto: textoDe(messages.at(-1)) },
+      body: {
+        conversa: conversa.current,
+        texto: textoDaMensagem(messages.at(-1)),
+      },
     }),
   });
 }
@@ -86,7 +91,7 @@ export function Conversa({
     // The refused message was not kept: it leaves the list and goes back to
     // the input, so the Viajante can copy it into a new Conversa.
     setMessages((atuais) => {
-      setTexto(textoDe(atuais.at(-1)));
+      setTexto(textoDaMensagem(atuais.at(-1)));
       return atuais.slice(0, -1);
     });
   }, [cheia, setMessages]);
@@ -148,12 +153,13 @@ export function Conversa({
               key={mensagem.id}
               className="max-w-[85%] self-end whitespace-pre-wrap rounded-2xl bg-teal-700 px-4 py-2 text-white"
             >
-              {textoDe(mensagem)}
+              {textoDaMensagem(mensagem)}
             </li>
           ) : (
             <RespostaDoAssistente
               key={mensagem.id}
               mensagem={mensagem}
+              conversa={messages}
               eventos={eventos}
               estados={estados}
               ocupado={emAndamento}
@@ -218,13 +224,6 @@ export function Conversa({
   );
 }
 
-function textoDe(mensagem: UIMessage | undefined): string {
-  if (!mensagem) return "";
-  return mensagem.parts
-    .flatMap((p) => (p.type === "text" ? [p.text] : []))
-    .join("");
-}
-
 /** A Proposta just made has no state from the page yet: it is valid until its expiry. */
 function estadoDe(
   proposta: PropostaDoCard,
@@ -236,18 +235,21 @@ function estadoDe(
 }
 
 /**
- * The Assistente's text in its bubble, then the Cotação cards, the Proposta
- * cards with the Eventos about them, and the panel. The cards' numbers come
- * from the tool results, never from the text.
+ * The Assistente's text in its bubble, with the Citações as footnotes, then
+ * the Cotação cards, the Proposta cards with the Eventos about them, and the
+ * panel. The cards' numbers come from the tool results, never from the text.
  */
 function RespostaDoAssistente({
   mensagem,
+  conversa,
   eventos,
   estados,
   ocupado,
   aoClicar,
 }: {
   mensagem: UIMessage;
+  /** The whole Conversa: a Citação counts only for a Trecho returned in it. */
+  conversa: UIMessage[];
   eventos: EventoDaConversa[];
   estados: Record<string, EstadoDoCard>;
   ocupado: boolean;
@@ -256,7 +258,7 @@ function RespostaDoAssistente({
   const propostas = propostasDaResposta(mensagem);
   const ids = new Set(propostas.map((p) => p.id));
   const sobreEstas = eventos.filter((e) => ids.has(e.evento.idDaProposta));
-  const texto = textoDe(mensagem);
+  const texto = textoDaResposta(mensagem, conversa);
   const consultando = mensagem.parts.some(
     (p) =>
       isToolUIPart(p) &&
@@ -265,9 +267,9 @@ function RespostaDoAssistente({
   );
   return (
     <li className="flex flex-col gap-3">
-      {(texto || consultando) && (
+      {(texto.pedacos.length > 0 || consultando) && (
         <p className="max-w-[85%] self-start whitespace-pre-wrap rounded-2xl bg-white px-4 py-2 shadow-sm">
-          {texto}
+          <TextoComCitacoes texto={texto} />
           {consultando && (
             <span className="block text-sm text-stone-500">
               Consultando o catálogo…
@@ -289,7 +291,10 @@ function RespostaDoAssistente({
       {sobreEstas.map((e) => (
         <LinhaDeEvento key={e.id} evento={e.evento} />
       ))}
-      <PainelDeChamadas chamadas={chamadasDaResposta(mensagem)} />
+      <PainelDeChamadas
+        chamadas={chamadasDaResposta(mensagem)}
+        citacoes={texto.citacoes}
+      />
     </li>
   );
 }
