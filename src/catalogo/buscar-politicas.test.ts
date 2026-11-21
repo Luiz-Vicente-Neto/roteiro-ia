@@ -96,6 +96,28 @@ describe("buscarPoliticas", () => {
       await catalogo.buscarPoliticas(entrada),
     );
   });
+
+  it("sem conseguir embedar a pergunta, recusa com BUSCA_INDISPONIVEL em vez de buscar só por palavras", async () => {
+    const semEmbedding = criarCatalogo({
+      base: criarBaseEmMemoria(catalogoDeTeste),
+      ...buscaNosTextosDeTeste(),
+      embedarPergunta: async () => {
+        throw new Error("429 Too Many Requests");
+      },
+      relogio: relogioFixo("2026-12-01T09:00:00-03:00"),
+    });
+
+    const resultado = await semEmbedding.buscarPoliticas({
+      pergunta: "posso cancelar?",
+    });
+
+    expect(resultado).toEqual({
+      ok: false,
+      erro: "BUSCA_INDISPONIVEL",
+      mensagem:
+        "Não consegui consultar as políticas agora, tente de novo em instantes.",
+    });
+  });
 });
 
 describe("buscarPoliticas por Destino e por Pacote", () => {

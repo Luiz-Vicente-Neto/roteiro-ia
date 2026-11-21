@@ -14,7 +14,8 @@ export type CodigoDeErro =
   | "PROPOSTA_INEXISTENTE"
   | "PROPOSTA_EXPIRADA"
   | "PROPOSTA_JA_CONFIRMADA"
-  | "PRECO_ALTERADO";
+  | "PRECO_ALTERADO"
+  | "BUSCA_INDISPONIVEL";
 
 export interface Falha<C extends CodigoDeErro = CodigoDeErro> {
   ok: false;

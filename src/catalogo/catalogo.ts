@@ -181,6 +181,14 @@ function jaConfirmada() {
   );
 }
 
+/** The model repeats this mensagem to the Viajante as is (instrucoes, rule 3). */
+function buscaIndisponivel() {
+  return falha(
+    "BUSCA_INDISPONIVEL",
+    "Não consegui consultar as políticas agora, tente de novo em instantes.",
+  );
+}
+
 function semVagas(restantes: number, doGrupo: number) {
   return falha(
     "VAGAS_INSUFICIENTES",
@@ -269,11 +277,24 @@ export function criarCatalogo({
       );
       if (!escopada.ok) return escopada;
       const { escopo } = escopada;
+      // A failed embedding (quota, network, key) is a refusal, not a bug.
+      // There is no falling back to the words alone: a worse answer with no
+      // warning is what the Viajante must never get.
+      // The word search still overlaps the embedding; its result is dropped
+      // when the embedding fails.
+      const palavras = trechos.buscarPorPalavras(
+        pergunta,
+        CANDIDATOS_POR_BUSCA,
+        escopo,
+      );
+      const vetor = await embedarPergunta(pergunta).catch(() => undefined);
+      if (!vetor) {
+        palavras.catch(() => {});
+        return buscaIndisponivel();
+      }
       const [porSentido, porPalavras] = await Promise.all([
-        embedarPergunta(pergunta).then((vetor) =>
-          trechos.buscarPorSentido(vetor, CANDIDATOS_POR_BUSCA, escopo),
-        ),
-        trechos.buscarPorPalavras(pergunta, CANDIDATOS_POR_BUSCA, escopo),
+        trechos.buscarPorSentido(vetor, CANDIDATOS_POR_BUSCA, escopo),
+        palavras,
       ]);
       // The cut comes after the fusion, so a Trecho only one search finds
       // still competes for the first places.

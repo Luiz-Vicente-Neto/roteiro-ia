@@ -463,6 +463,60 @@ describe("buscar_politicas no chat", () => {
     expect(sistema?.content).toMatch(/buscar_politicas/);
     expect(sistema?.content).toMatch(/não sabe/);
   });
+
+  it("com a busca nos textos fora do ar, a mensagem amigável chega ao modelo e ao painel, e a busca de Pacotes segue funcionando", async () => {
+    const amigavel =
+      "Não consegui consultar as políticas agora, tente de novo em instantes.";
+    const semEmbedding = criarCatalogo({
+      ...buscaNosTextosDeTeste(),
+      embedarPergunta: async () => {
+        throw new Error("429 Too Many Requests");
+      },
+      base: criarBaseEmMemoria(catalogoDeTeste),
+      relogio,
+    });
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("buscar_politicas", { pergunta: "posso cancelar?" }),
+        passoDeFerramenta("buscar_pacotes", buscaDeJaneiro),
+        passoDeTexto(amigavel),
+      ],
+    });
+    const assistente = criarAssistente({
+      modelo,
+      catalogo: semEmbedding,
+      conversas: criarBaseDeConversasEmMemoria(),
+      relogio,
+    });
+
+    const envio = await assistente.enviarMensagem({
+      dono,
+      texto: "posso cancelar? e quais Pacotes há em janeiro?",
+    });
+    if (!envio.ok) throw new Error(envio.erro);
+    let mensagem: UIMessage | undefined;
+    for await (const m of readUIMessageStream({ stream: envio.stream })) {
+      mensagem = m;
+    }
+    if (!mensagem) throw new Error("O stream não montou nenhuma mensagem");
+
+    const [politicas, pacotes] = chamadasDaResposta(mensagem);
+    expect(politicas).toMatchObject({
+      ferramenta: "buscar_politicas",
+      ok: false,
+      saida: { erro: "BUSCA_INDISPONIVEL", mensagem: amigavel },
+    });
+    expect(resultadoVistoPeloModelo(modelo)?.output).toEqual({
+      type: "json",
+      value: expect.objectContaining({ mensagem: amigavel }),
+    });
+    expect(pacotes).toMatchObject({ ferramenta: "buscar_pacotes", ok: true });
+    expect(cardsDaResposta(mensagem).length).toBeGreaterThan(0);
+    const sistema = modelo.doStreamCalls[0]?.prompt.find(
+      (m) => m.role === "system",
+    );
+    expect(sistema?.content).toMatch(/BUSCA_INDISPONIVEL.*repasse/);
+  });
 });
 
 const CANCELAMENTO = "politica-da-agencia#cancelamento";

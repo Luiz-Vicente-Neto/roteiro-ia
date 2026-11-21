@@ -158,12 +158,19 @@ export function resolverEmbeddings(env: Env): Embeddings {
   return {
     indice,
     async embedarPergunta(texto) {
-      const { embedding } = await embed({
-        model: modelo,
-        value: escrever.pergunta(texto),
-        dimensions: DIMENSOES,
-      });
-      return embedding;
+      try {
+        const { embedding } = await embed({
+          model: modelo,
+          value: escrever.pergunta(texto),
+          dimensions: DIMENSOES,
+        });
+        return embedding;
+      } catch (erro) {
+        // The catalog turns this into BUSCA_INDISPONIVEL and drops the
+        // detail, so it stays in the server log.
+        console.error("Embedding da pergunta falhou:", erro);
+        throw erro;
+      }
     },
     async embedarTrechos(textos) {
       const { embeddings } = await embedMany({

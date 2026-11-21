@@ -70,7 +70,8 @@ export function criarFerramentas(operacoes: Operacoes): Ferramenta[] {
         "Recebe a pergunta do viajante e, opcionalmente, o destino (nome ou slug) ou o pacote (slug). Sem nenhum dos dois, busca só na Política da Agência e nas perguntas frequentes gerais, que valem para todos. Com destino, busca também nos textos do Destino (descrição e perguntas frequentes) e de todos os Hotéis dele. Com pacote, busca também nos textos do Destino e só do Hotel desse Pacote: quando o viajante fala de um Pacote, passe o slug dele, para receber a regra do Hotel certo. " +
         "Devolve os 5 Trechos mais próximos da pergunta, cada um com id, tituloDoDocumento, secao e textoCitado. Nem todos respondem à pergunta: use só os que respondem e, se nenhum responder, diga que não sabe. Quando um Trecho de Hotel diz que a regra dele é diferente da Política da Agência, vale a do Hotel. " +
         "Nunca traz preço, Vagas nem datas de Saída: esses valores vêm só das outras ferramentas. " +
-        "Se o destino não existir, devolve DESTINO_DESCONHECIDO com os Destinos existentes em sugestoes; se o pacote não existir, PACOTE_DESCONHECIDO com os slugs parecidos em sugestoes.",
+        "Se o destino não existir, devolve DESTINO_DESCONHECIDO com os Destinos existentes em sugestoes; se o pacote não existir, PACOTE_DESCONHECIDO com os slugs parecidos em sugestoes. " +
+        "Se a busca estiver fora do ar, devolve BUSCA_INDISPONIVEL: repasse a mensagem ao viajante como está, sem responder com o que você sabe de fora.",
       schemaDeEntrada: entradaBuscarPoliticas,
       executar: (entrada) =>
         operacoes.buscarPoliticas(entrada as EntradaBuscarPoliticas),
