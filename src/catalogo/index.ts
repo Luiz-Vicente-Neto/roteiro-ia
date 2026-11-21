@@ -10,6 +10,8 @@ export {
   conferirVetores,
   criarBaseDeTrechosEmMemoria,
   type Embedar,
+  ESCOPO_GERAL,
+  type EscopoDaBusca,
   type IndiceDosTrechos,
   type TrechoEncontrado,
   type TrechoIndexado,

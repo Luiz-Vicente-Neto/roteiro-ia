@@ -4,13 +4,18 @@
 import { createHash } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { semente } from "./semente";
 import type { TipoDeDocumento, Trecho } from "./tipos";
 
 // A function, not a constant: the Next bundle imports this module but never
 // reads the Documentos, and has no import.meta.dirname.
 const pasta = () => join(import.meta.dirname, "documentos");
 
-const TIPOS: readonly TipoDeDocumento[] = ["politica-da-agencia"];
+const TIPOS: readonly TipoDeDocumento[] = [
+  "politica-da-agencia",
+  "destino",
+  "hotel",
+];
 
 /** Lowercase ASCII words joined by hyphens: "O que a Pré-reserva garante" → "o-que-a-pre-reserva-garante". */
 function slug(texto: string): string {
@@ -37,12 +42,74 @@ function lerCabecalho(arquivo: string, conteudo: string) {
     }),
   );
   const tipo = campos.get("tipo") as TipoDeDocumento | undefined;
-  const titulo = campos.get("titulo");
   if (!tipo || !TIPOS.includes(tipo)) {
     throw new Error(`${arquivo}: tipo "${tipo}" desconhecido`);
   }
-  if (!titulo) throw new Error(`${arquivo}: falta o titulo`);
-  return { tipo, titulo, corpo: conteudo.slice(encontrado[0].length) };
+  return {
+    tipo,
+    ...origemDoDocumento(arquivo, tipo, campos),
+    corpo: conteudo.slice(encontrado[0].length),
+  };
+}
+
+/**
+ * Title, Destino and Hotel of a Documento. A Descrição names its Destino or
+ * Hotel by slug and takes title and Destino from the catalog, where the
+ * data rules; its file is named `<tipo>-<slug>.md`, so its id is predictable.
+ */
+function origemDoDocumento(
+  arquivo: string,
+  tipo: TipoDeDocumento,
+  campos: Map<string, string>,
+): {
+  titulo: string;
+  /** Prefix of the embedded text, before the section. */
+  prefixo: string;
+  destino?: string;
+  hotel?: string;
+} {
+  const exigir = (campo: string) => {
+    const valor = campos.get(campo);
+    if (!valor) throw new Error(`${arquivo}: falta o campo ${campo}`);
+    return valor;
+  };
+  const conferirNome = (slugEsperado: string) => {
+    if (arquivo !== `${tipo}-${slugEsperado}.md`) {
+      throw new Error(
+        `${arquivo}: o arquivo deveria se chamar ${tipo}-${slugEsperado}.md`,
+      );
+    }
+  };
+  const destinoDe = (slugDoDestino: string) => {
+    const destino = semente.destinos.find((d) => d.slug === slugDoDestino);
+    if (!destino)
+      throw new Error(`${arquivo}: Destino "${slugDoDestino}" não existe`);
+    return destino;
+  };
+  if (tipo === "destino") {
+    const destino = destinoDe(exigir("destino"));
+    conferirNome(destino.slug);
+    return {
+      titulo: destino.nome,
+      prefixo: destino.nome,
+      destino: destino.slug,
+    };
+  }
+  if (tipo === "hotel") {
+    const slugDoHotel = exigir("hotel");
+    const hotel = semente.hoteis.find((h) => h.slug === slugDoHotel);
+    if (!hotel)
+      throw new Error(`${arquivo}: Hotel "${slugDoHotel}" não existe`);
+    conferirNome(hotel.slug);
+    return {
+      titulo: hotel.nome,
+      prefixo: `${hotel.nome}, ${destinoDe(hotel.destino).nome}`,
+      destino: hotel.destino,
+      hotel: hotel.slug,
+    };
+  }
+  const titulo = exigir("titulo");
+  return { titulo, prefixo: titulo };
 }
 
 /** Every `##` section of the Documento in `arquivo` becomes one Trecho. */
@@ -51,7 +118,10 @@ function trechosDoArquivo(arquivo: string): Trecho[] {
     /\r\n/g,
     "\n",
   );
-  const { tipo, titulo, corpo } = lerCabecalho(arquivo, conteudo);
+  const { tipo, titulo, prefixo, destino, hotel, corpo } = lerCabecalho(
+    arquivo,
+    conteudo,
+  );
   const documento = { id: arquivo.replace(/\.md$/, ""), titulo };
   const [antes, ...secoes] = corpo.split(/^## /m);
   // Text outside a section would belong to no Trecho, and no search would find it.
@@ -62,11 +132,13 @@ function trechosDoArquivo(arquivo: string): Trecho[] {
     const quebra = bloco.indexOf("\n");
     const secao = bloco.slice(0, quebra).trim();
     const textoCitado = bloco.slice(quebra + 1).trim();
-    const textoEmbedado = `${titulo} › ${secao}\n\n${textoCitado}`;
+    const textoEmbedado = `${prefixo} › ${secao}\n\n${textoCitado}`;
     return {
       id: `${documento.id}#${slug(secao)}`,
       documento,
       tipoDoDocumento: tipo,
+      ...(destino && { destino }),
+      ...(hotel && { hotel }),
       secao,
       textoCitado,
       textoEmbedado,

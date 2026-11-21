@@ -21,6 +21,9 @@ export const PERGUNTAS_GRAVADAS = [
   "preciso de passaporte?",
   "meu cachorro pode ir?",
   "o que diz o Estatuto?",
+  "posso levar meu cachorro?",
+  "o que fazer em Bonito?",
+  "o hotel tem estacionamento?",
 ] as const;
 
 export interface VetoresGravados extends IndiceDosTrechos {

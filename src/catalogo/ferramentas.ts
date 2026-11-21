@@ -66,9 +66,11 @@ export function criarFerramentas(operacoes: Operacoes): Ferramenta[] {
     {
       nome: "buscar_politicas",
       descricao:
-        "Busca nos textos do catálogo os Trechos que respondem a uma pergunta sobre regras e políticas da agência: cancelamento e reembolso, pagamento, documentos de viagem, o que a Pré-reserva garante, crianças e pets. " +
-        "Recebe a pergunta do viajante e devolve os 5 Trechos mais próximos dela, cada um com id, tituloDoDocumento, secao e textoCitado. Nem todos respondem à pergunta: use só os que respondem e, se nenhum responder, diga que não sabe. " +
-        "Nunca traz preço, Vagas nem datas de Saída: esses valores vêm só das outras ferramentas.",
+        "Busca nos textos do catálogo os Trechos que respondem a uma pergunta sobre regras e políticas da agência (cancelamento e reembolso, pagamento, documentos de viagem, o que a Pré-reserva garante, crianças e pets), sobre um Destino (clima, quando ir, o que fazer) ou sobre um Hotel (estrutura, check-in, estacionamento, regras de pets e exceções às regras da agência). " +
+        "Recebe a pergunta do viajante e, opcionalmente, o destino (nome ou slug) ou o pacote (slug). Sem nenhum dos dois, busca só na Política da Agência, que vale para todos. Com destino, busca também nos textos do Destino e de todos os Hotéis dele. Com pacote, busca também nos textos do Destino e só do Hotel desse Pacote: quando o viajante fala de um Pacote, passe o slug dele, para receber a regra do Hotel certo. " +
+        "Devolve os 5 Trechos mais próximos da pergunta, cada um com id, tituloDoDocumento, secao e textoCitado. Nem todos respondem à pergunta: use só os que respondem e, se nenhum responder, diga que não sabe. Quando um Trecho de Hotel diz que a regra dele é diferente da Política da Agência, vale a do Hotel. " +
+        "Nunca traz preço, Vagas nem datas de Saída: esses valores vêm só das outras ferramentas. " +
+        "Se o destino não existir, devolve DESTINO_DESCONHECIDO com os Destinos existentes em sugestoes; se o pacote não existir, PACOTE_DESCONHECIDO com os slugs parecidos em sugestoes.",
       schemaDeEntrada: entradaBuscarPoliticas,
       executar: (entrada) =>
         operacoes.buscarPoliticas(entrada as EntradaBuscarPoliticas),

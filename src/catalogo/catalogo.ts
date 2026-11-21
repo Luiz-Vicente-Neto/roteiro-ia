@@ -1,5 +1,10 @@
 import type { BaseDoCatalogo } from "./base";
-import type { BaseDeTrechos, Embedar } from "./base-de-trechos";
+import {
+  type BaseDeTrechos,
+  type Embedar,
+  ESCOPO_GERAL,
+  type EscopoDaBusca,
+} from "./base-de-trechos";
 import { buscar, destinosDaBusca } from "./busca";
 import {
   type EntradaBuscarPacotes,
@@ -21,7 +26,7 @@ import { gerarCodigoDaPreReserva } from "./pre-reserva";
 import { cotar } from "./preco";
 import { gerarIdDaProposta } from "./proposta";
 import type { Relogio } from "./relogio";
-import type { DadosDoCatalogo, PreReserva } from "./tipos";
+import type { DadosDoCatalogo, Destino, Pacote, PreReserva } from "./tipos";
 import { type CatalogoVigente, ocupacao, vagasRestantes } from "./vagas";
 
 const SUGESTOES_DE_SAIDA = 3;
@@ -37,6 +42,9 @@ const TRECHOS_POR_BUSCA = 5;
 /** How many Trechos each half of the hybrid search hands to the fusion. */
 const CANDIDATOS_POR_BUSCA = 20;
 
+/** How many look-alike slugs an unknown Pacote gets in sugestoes. */
+const SUGESTOES_DE_PACOTE = 5;
+
 /** A collision among 32⁴ codes is rare; this many in a row means a bug. */
 const TENTATIVAS_DE_CODIGO = 5;
 
@@ -50,6 +58,80 @@ function datasMaisProximas(datas: string[], alvo: string): string[] {
     .sort();
 }
 
+/** `semDestino` says what leaving destino out does in the tool that refuses. */
+function destinoDesconhecido(
+  nome: string,
+  destinos: Destino[],
+  semDestino: string,
+) {
+  return falha(
+    "DESTINO_DESCONHECIDO",
+    `Não existe Destino chamado "${nome}" no catálogo. Os Destinos existentes estão em sugestoes: use um deles, omita destino para ${semDestino}, ou explique ao viajante o que existe.`,
+    destinos.map((d) => d.nome),
+  );
+}
+
+/**
+ * The error for a Pacote slug the catalog lacks. The sugestoes are the slugs
+ * sharing the most words with it ("bonito-gruta-azul-4n" finds
+ * "bonito-pousada-gruta-azul-4n"), so the model can fix a mistyped slug.
+ */
+function pacoteDesconhecido(slug: string, pacotes: Pacote[]) {
+  const palavras = new Set(slug.toLowerCase().split("-"));
+  const parecidos = pacotes
+    .map((p) => ({
+      slug: p.slug,
+      comuns: p.slug.split("-").filter((w) => palavras.has(w)).length,
+    }))
+    .filter((p) => p.comuns > 0)
+    .sort((a, b) => b.comuns - a.comuns || (a.slug < b.slug ? -1 : 1))
+    .slice(0, SUGESTOES_DE_PACOTE)
+    .map((p) => p.slug);
+  const onde =
+    parecidos.length > 0 ? "; os mais parecidos estão em sugestoes" : "";
+  return falha(
+    "PACOTE_DESCONHECIDO",
+    `Não existe Pacote com o slug "${slug}". Use o slug exato de um Pacote do catálogo, como aparece nos resultados de buscar_pacotes${onde}.`,
+    parecidos,
+  );
+}
+
+/**
+ * Where buscar_politicas may search: a Destino and all its Hotéis, or a
+ * Pacote's Destino and only the Pacote's Hotel. The Pacote wins when both
+ * come, being the narrower. With neither, the catalog is never read.
+ */
+async function escopoDasPoliticas(
+  lerCatalogo: () => Promise<DadosDoCatalogo>,
+  entrada: { destino?: string; pacote?: string },
+) {
+  const encontrado = (escopo: EscopoDaBusca) => ({ ok: true as const, escopo });
+  if (entrada.pacote === undefined && entrada.destino === undefined) {
+    return encontrado(ESCOPO_GERAL);
+  }
+  const { destinos, hoteis, pacotes } = await lerCatalogo();
+  if (entrada.pacote !== undefined) {
+    const pacote = pacotes.find((p) => p.slug === entrada.pacote);
+    if (!pacote) return pacoteDesconhecido(entrada.pacote, pacotes);
+    const hotel = hoteis.find((h) => h.slug === pacote.hotel);
+    if (!hotel) throw new Error(`Pacote ${pacote.slug} sem Hotel`);
+    return encontrado({ destinos: [hotel.destino], hoteis: [hotel.slug] });
+  }
+  const nome = entrada.destino ?? "";
+  const [destino] = destinosDaBusca(destinos, nome);
+  if (!destino) {
+    return destinoDesconhecido(
+      nome,
+      destinos,
+      "buscar só na Política da Agência",
+    );
+  }
+  return encontrado({
+    destinos: [destino.slug],
+    hoteis: hoteis.filter((h) => h.destino === destino.slug).map((h) => h.slug),
+  });
+}
+
 /**
  * Finds the Saída of `entrada` in the catalog, or the error the model gets
  * when the Pacote is unknown, the date is not one of its Saídas, or it is past.
@@ -60,12 +142,7 @@ function encontrarSaida(
   hoje: string,
 ) {
   const pacote = pacotes.find((p) => p.slug === entrada.pacote);
-  if (!pacote) {
-    return falha(
-      "PACOTE_DESCONHECIDO",
-      `Não existe Pacote com o slug "${entrada.pacote}". Use o slug exato de um Pacote do catálogo, como aparece nos resultados de buscar_pacotes.`,
-    );
-  }
+  if (!pacote) return pacoteDesconhecido(entrada.pacote, pacotes);
   const doPacote = saidas.filter((s) => s.pacote === entrada.pacote);
   const proximas = datasMaisProximas(
     doPacote.filter((s) => s.data >= hoje).map((s) => s.data),
@@ -157,12 +234,11 @@ export function criarCatalogo({
       const { grupo, destino, janela, orcamento } = validacao.valor;
       const catalogo = await lerCatalogoVigente();
       const destinos = destinosDaBusca(catalogo.destinos, destino);
-      if (destinos.length === 0) {
-        const existentes = catalogo.destinos.map((d) => d.nome);
-        return falha(
-          "DESTINO_DESCONHECIDO",
-          `Não existe Destino chamado "${destino}" no catálogo. Os Destinos existentes estão em sugestoes: use um deles, omita destino para buscar em todos, ou explique ao viajante o que existe.`,
-          existentes,
+      if (destino !== undefined && destinos.length === 0) {
+        return destinoDesconhecido(
+          destino,
+          catalogo.destinos,
+          "buscar em todos",
         );
       }
       const hoje = relogio.hoje();
@@ -181,11 +257,17 @@ export function criarCatalogo({
       const validacao = validar(entradaBuscarPoliticas, bruta);
       if (!validacao.ok) return validacao;
       const { pergunta } = validacao.valor;
+      const escopada = await escopoDasPoliticas(
+        () => base.lerCatalogo(),
+        validacao.valor,
+      );
+      if (!escopada.ok) return escopada;
+      const { escopo } = escopada;
       const [porSentido, porPalavras] = await Promise.all([
         embedarPergunta(pergunta).then((vetor) =>
-          trechos.buscarPorSentido(vetor, CANDIDATOS_POR_BUSCA),
+          trechos.buscarPorSentido(vetor, CANDIDATOS_POR_BUSCA, escopo),
         ),
-        trechos.buscarPorPalavras(pergunta, CANDIDATOS_POR_BUSCA),
+        trechos.buscarPorPalavras(pergunta, CANDIDATOS_POR_BUSCA, escopo),
       ]);
       // The cut comes after the fusion, so a Trecho only one search finds
       // still competes for the first places.

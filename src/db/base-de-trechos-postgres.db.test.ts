@@ -1,4 +1,5 @@
 import { afterAll, describe, expect, inject, it } from "vitest";
+import { ESCOPO_GERAL } from "../catalogo";
 import { testarContratoDaBaseDeTrechos } from "../catalogo/base-de-trechos.contrato";
 import { embedarPerguntaGravada } from "../catalogo/textos-de-teste";
 import {
@@ -31,6 +32,7 @@ describe("sincronizarTrechos", () => {
     const encontrados = await base.buscarPorSentido(
       await embedarPerguntaGravada("posso cancelar?"),
       2,
+      ESCOPO_GERAL,
     );
     expect(encontrados.map((t) => t.id)).toContain(
       "politica-da-agencia#cancelamento",

@@ -97,7 +97,7 @@ export function buscar(catalogo: CatalogoVigente, criterios: CriteriosDaBusca) {
 }
 
 /**
- * The Destinos whose name matches `nome` ignoring case and accents, or every
+ * The Destinos whose name or slug matches `nome` ignoring case and accents, or every
  * Destino when `nome` is absent. Empty means the Destino is unknown.
  */
 export function destinosDaBusca(
@@ -105,8 +105,9 @@ export function destinosDaBusca(
   nome: string | undefined,
 ): Destino[] {
   if (nome === undefined) return destinos;
+  const procurado = normalizarNome(nome);
   return destinos.filter(
-    (d) => normalizarNome(d.nome) === normalizarNome(nome),
+    (d) => normalizarNome(d.nome) === procurado || d.slug === procurado,
   );
 }
 

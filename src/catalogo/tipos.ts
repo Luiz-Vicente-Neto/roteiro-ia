@@ -135,8 +135,8 @@ export interface VagasOcupadas {
   vagas: number;
 }
 
-/** What kind of Documento a text is. Only the Política da Agência exists so far. */
-export type TipoDeDocumento = "politica-da-agencia";
+/** What kind of Documento a text is. */
+export type TipoDeDocumento = "politica-da-agencia" | "destino" | "hotel";
 
 /** One section of a Documento: what the search finds and the Assistente cites. */
 export interface Trecho {
@@ -144,6 +144,10 @@ export interface Trecho {
   id: string;
   documento: { id: string; titulo: string };
   tipoDoDocumento: TipoDeDocumento;
+  /** Slug of the Destino it belongs to; absent, it counts for every Destino. */
+  destino?: string;
+  /** Slug of the Hotel it describes; absent, it is not about one Hotel. */
+  hotel?: string;
   /** The section heading, as written in the Documento. */
   secao: string;
   /** What a Citação shows: the section's text, without its heading. */

@@ -259,6 +259,11 @@ export const trechos = pgTable(
     documentoId: text("documento_id").notNull(),
     documentoTitulo: text("documento_titulo").notNull(),
     tipoDoDocumento: text("tipo_do_documento").notNull(),
+    // Slugs of the Destino and the Hotel; null counts for every Destino, or
+    // for no Hotel. Plain text, not foreign keys: the Trechos are rebuilt
+    // from the Documentos on every setup, apart from the catalog's rows.
+    destino: text(),
+    hotel: text(),
     secao: text().notNull(),
     textoCitado: text("texto_citado").notNull(),
     textoEmbedado: text("texto_embedado").notNull(),

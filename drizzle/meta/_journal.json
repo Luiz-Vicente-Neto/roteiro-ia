@@ -78,6 +78,13 @@
       "when": 1795262805907,
       "tag": "0010_busca-por-palavras-nos-trechos",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795263979293,
+      "tag": "0011_escopo-dos-trechos",
+      "breakpoints": true
     }
   ]
 }

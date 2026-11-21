@@ -127,7 +127,22 @@ export const entradaBuscarPoliticas = z.object({
     .trim()
     .min(1, INFORME_A_PERGUNTA)
     .describe(
-      "A pergunta do viajante sobre regras e políticas, em português, como ele escreveu ou reformulada para ficar completa (ex.: posso cancelar a viagem?).",
+      "A pergunta do viajante sobre regras e políticas, Destinos ou Hotéis, em português, como ele escreveu ou reformulada para ficar completa (ex.: posso cancelar a viagem?).",
+    ),
+  destino: z
+    .string({
+      error: "O destino é o nome ou o slug de um Destino, como Bonito.",
+    })
+    .trim()
+    .min(1, "Informe o nome do Destino, ou omita destino.")
+    .optional()
+    .describe(
+      "Nome ou slug do Destino de que o viajante fala (ex.: Bonito). Maiúsculas e acentos não importam. Traz também os textos de todos os Hotéis dele.",
+    ),
+  pacote: slugDoPacote
+    .optional()
+    .describe(
+      "Slug do Pacote de que o viajante fala (ex.: bonito-pousada-gruta-azul-4n). Traz os textos do Destino e só os do Hotel desse Pacote. Com pacote, destino não é preciso.",
     ),
 });
 

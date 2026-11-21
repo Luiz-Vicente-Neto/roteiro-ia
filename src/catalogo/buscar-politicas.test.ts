@@ -5,6 +5,7 @@ import {
   criarBaseEmMemoria,
   criarCatalogo,
   relogioFixo,
+  semente,
 } from ".";
 import { catalogoDeTeste } from "./catalogo-de-teste";
 import { buscaNosTextosDeTeste, trechosGravados } from "./textos-de-teste";
@@ -94,6 +95,163 @@ describe("buscarPoliticas", () => {
     expect(await ferramenta?.executar(entrada)).toEqual(
       await catalogo.buscarPoliticas(entrada),
     );
+  });
+});
+
+describe("buscarPoliticas por Destino e por Pacote", () => {
+  const doCatalogo = criarCatalogo({
+    base: criarBaseEmMemoria(semente),
+    ...buscaNosTextosDeTeste(),
+    relogio: relogioFixo("2026-12-01T09:00:00-03:00"),
+  });
+
+  async function idsDe(entrada: {
+    pergunta: string;
+    destino?: string;
+    pacote?: string;
+  }) {
+    const resultado = await doCatalogo.buscarPoliticas(entrada);
+    if (!resultado.ok) throw new Error(resultado.mensagem);
+    return resultado.trechos.map((t) => t.id);
+  }
+
+  it("sem Destino nem Pacote, responde só com a Política da Agência, nunca com a regra de um Hotel qualquer", async () => {
+    const ids = await idsDe({ pergunta: "posso levar meu cachorro?" });
+
+    expect(ids).toHaveLength(5);
+    expect(ids.filter((id) => !id.startsWith("politica-da-agencia#"))).toEqual(
+      [],
+    );
+  });
+
+  it.each(["Bonito", "bonito", "BONITO"])(
+    '"o que fazer em Bonito?" com destino %s responde a partir da Descrição do Destino',
+    async (destino) => {
+      const ids = await idsDe({ pergunta: "o que fazer em Bonito?", destino });
+
+      expect(ids.slice(0, 2)).toContain("destino-bonito#o-que-fazer");
+    },
+  );
+
+  it("com destino, aceita o slug e o nome sem acento, e só traz a Política, o Destino e os Hotéis dele", async () => {
+    const doDestino =
+      /^(politica-da-agencia|destino-foz-do-iguacu|hotel-(cataratas-park|tres-fronteiras|mata-atlantica-resort))#/;
+
+    for (const destino of ["foz-do-iguacu", "foz do iguacu"]) {
+      const ids = await idsDe({
+        pergunta: "o hotel tem estacionamento?",
+        destino,
+      });
+
+      expect(
+        ids.filter((id) => !doDestino.test(id)),
+        destino,
+      ).toEqual([]);
+      expect(
+        ids.some((id) => id.startsWith("hotel-")),
+        destino,
+      ).toBe(true);
+    }
+  });
+
+  it('depois de ver um Pacote com pet, "posso levar meu cachorro?" traz a seção de pets do Hotel daquele Pacote, e de nenhum outro Hotel', async () => {
+    const ids = await idsDe({
+      pergunta: "posso levar meu cachorro?",
+      pacote: "bonito-pousada-gruta-azul-4n",
+    });
+
+    expect(ids.slice(0, 2)).toContain("hotel-pousada-gruta-azul#pets");
+    expect(
+      ids.filter(
+        (id) =>
+          id.startsWith("hotel-") &&
+          !id.startsWith("hotel-pousada-gruta-azul#"),
+      ),
+    ).toEqual([]);
+  });
+
+  it('com pacote, "o hotel tem estacionamento?" traz o estacionamento do Hotel do Pacote', async () => {
+    const ids = await idsDe({
+      pergunta: "o hotel tem estacionamento?",
+      pacote: "campos-do-jordao-vila-capivari-3n",
+    });
+
+    expect(ids.slice(0, 2)).toContain("hotel-vila-capivari#estacionamento");
+  });
+
+  it("a exceção de cancelamento de um Hotel aparece para o Pacote dele", async () => {
+    expect(
+      await idsDe({
+        pergunta: "posso cancelar?",
+        pacote: "porto-de-galinhas-enseada-resort-5n",
+      }),
+    ).toContain("hotel-enseada-resort#cancelamento");
+    expect(
+      await idsDe({
+        pergunta: "posso cancelar?",
+        pacote: "campos-do-jordao-chateau-montanha-4n",
+      }),
+    ).toContain("hotel-chateau-montanha#cancelamento");
+  });
+
+  it("a exceção de cancelamento de um Hotel nunca aparece para Pacotes de outros Hotéis", async () => {
+    const excecoes = {
+      "enseada-resort": "hotel-enseada-resort#cancelamento",
+      "chateau-montanha": "hotel-chateau-montanha#cancelamento",
+    };
+    for (const pacote of semente.pacotes) {
+      const ids = await idsDe({
+        pergunta: "posso cancelar?",
+        pacote: pacote.slug,
+      });
+
+      for (const [hotel, excecao] of Object.entries(excecoes)) {
+        if (pacote.hotel !== hotel) {
+          expect(ids, pacote.slug).not.toContain(excecao);
+        }
+      }
+    }
+  });
+
+  it("recusa um Destino desconhecido com DESTINO_DESCONHECIDO, com os Destinos existentes em sugestoes", async () => {
+    const resultado = await doCatalogo.buscarPoliticas({
+      pergunta: "o que fazer?",
+      destino: "Paris",
+    });
+
+    expect(resultado).toMatchObject({
+      ok: false,
+      erro: "DESTINO_DESCONHECIDO",
+      mensagem: expect.stringMatching(/Paris/),
+    });
+    expect(!resultado.ok && resultado.sugestoes).toContain("Bonito");
+  });
+
+  it("recusa um Pacote desconhecido com PACOTE_DESCONHECIDO, sugerindo os slugs parecidos", async () => {
+    const resultado = await doCatalogo.buscarPoliticas({
+      pergunta: "posso levar meu cachorro?",
+      pacote: "bonito-gruta-azul-4n",
+    });
+
+    expect(resultado).toMatchObject({
+      ok: false,
+      erro: "PACOTE_DESCONHECIDO",
+      mensagem: expect.stringMatching(/bonito-gruta-azul-4n/),
+    });
+    expect(!resultado.ok && resultado.sugestoes).toContain(
+      "bonito-pousada-gruta-azul-4n",
+    );
+  });
+
+  it.each([
+    { caso: "destino vazio", entrada: { pergunta: "oi", destino: " " } },
+    { caso: "pacote que não é texto", entrada: { pergunta: "oi", pacote: 7 } },
+  ])("recusa $caso com ENTRADA_INVALIDA", async ({ entrada }) => {
+    const resultado = await doCatalogo.buscarPoliticas(
+      entrada as { pergunta: string },
+    );
+
+    expect(resultado).toMatchObject({ ok: false, erro: "ENTRADA_INVALIDA" });
   });
 });
 

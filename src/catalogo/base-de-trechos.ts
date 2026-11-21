@@ -17,23 +17,53 @@ export type TrechoIndexado = Trecho & { vetor: number[] };
 export type TrechoEncontrado = Omit<Trecho, "textoEmbedado" | "hash">;
 
 /**
+ * Which Trechos a search may return: the ones of the Hotéis in `hoteis`, the
+ * ones of the Destinos in `destinos` that are about no Hotel, and always the
+ * ones of no Destino nor Hotel, which count for every search. A Hotel's
+ * Destino in `destinos` does not bring the Hotel in: only `hoteis` does.
+ */
+export interface EscopoDaBusca {
+  /** Slugs of Destinos. */
+  destinos: string[];
+  /** Slugs of Hotéis. */
+  hoteis: string[];
+}
+
+/** No Destino nor Hotel: only the Trechos that count for every search. */
+export const ESCOPO_GERAL: EscopoDaBusca = { destinos: [], hoteis: [] };
+
+/** True when `trecho` may come back from a search in `escopo`. */
+export function estaNoEscopo(
+  { destino, hotel }: Pick<Trecho, "destino" | "hotel">,
+  escopo: EscopoDaBusca,
+): boolean {
+  if (hotel) return escopo.hoteis.includes(hotel);
+  return !destino || escopo.destinos.includes(destino);
+}
+
+/**
  * Base de Trechos: what the text search needs from storage (docs/adr/0005).
  * Separate from the Base do Catálogo because its implementations need not
  * rank alike: the contract checks properties, never the exact order.
  */
 export interface BaseDeTrechos {
-  /** Up to `limite` Trechos, most similar to `vetor` by cosine first. */
+  /** Up to `limite` Trechos of `escopo`, most similar to `vetor` by cosine first. */
   buscarPorSentido(
     vetor: number[],
     limite: number,
+    escopo: EscopoDaBusca,
   ): Promise<TrechoEncontrado[]>;
   /**
-   * Up to `limite` Trechos holding words of `texto`, best match first. Accents
+   * Up to `limite` Trechos of `escopo` holding words of `texto`, best match first. Accents
    * and case never matter, and stopwords never match; a Trecho with none of
    * the words never comes back. Postgres also matches by stem, the in-memory
    * Base only whole words.
    */
-  buscarPorPalavras(texto: string, limite: number): Promise<TrechoEncontrado[]>;
+  buscarPorPalavras(
+    texto: string,
+    limite: number,
+    escopo: EscopoDaBusca,
+  ): Promise<TrechoEncontrado[]>;
   /** The model and dimensions the stored vectors came from, or undefined when no Trecho is stored. */
   lerIndice(): Promise<IndiceDosTrechos | undefined>;
 }
@@ -150,19 +180,12 @@ function palavras(texto: string): string[] {
 }
 
 function semVetor({
-  id,
-  documento,
-  tipoDoDocumento,
-  secao,
-  textoCitado,
+  vetor: _vetor,
+  textoEmbedado: _textoEmbedado,
+  hash: _hash,
+  ...encontrado
 }: TrechoIndexado): TrechoEncontrado {
-  return structuredClone({
-    id,
-    documento,
-    tipoDoDocumento,
-    secao,
-    textoCitado,
-  });
+  return structuredClone(encontrado);
 }
 
 export function criarBaseDeTrechosEmMemoria(
@@ -173,8 +196,9 @@ export function criarBaseDeTrechosEmMemoria(
   // Copied on the way in, so no caller can change the stored Trechos.
   const guardados = structuredClone(trechos);
   return {
-    async buscarPorSentido(vetor, limite) {
+    async buscarPorSentido(vetor, limite, escopo) {
       return guardados
+        .filter((trecho) => estaNoEscopo(trecho, escopo))
         .map((trecho) => ({
           trecho,
           similaridade: cosseno(vetor, trecho.vetor),
@@ -183,9 +207,10 @@ export function criarBaseDeTrechosEmMemoria(
         .slice(0, limite)
         .map(({ trecho }) => semVetor(trecho));
     },
-    async buscarPorPalavras(texto, limite) {
+    async buscarPorPalavras(texto, limite, escopo) {
       const procuradas = new Set(palavras(texto));
       return guardados
+        .filter((trecho) => estaNoEscopo(trecho, escopo))
         .map((trecho) => {
           const achadas = palavras(trecho.textoEmbedado).filter((p) =>
             procuradas.has(p),

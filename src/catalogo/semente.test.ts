@@ -239,6 +239,108 @@ describe("Trechos dos Documentos", () => {
     ]);
   });
 
+  const doHotel = (slug: string) => trechos.filter((t) => t.hotel === slug);
+
+  it("dão uma Descrição a cada Destino, ligada só ao Destino", () => {
+    for (const destino of destinos) {
+      const descricao = trechos.filter(
+        (t) => t.tipoDoDocumento === "destino" && t.destino === destino.slug,
+      );
+
+      expect(descricao.length, destino.slug).toBeGreaterThan(0);
+      expect(descricao[0].documento, destino.slug).toEqual({
+        id: `destino-${destino.slug}`,
+        titulo: destino.nome,
+      });
+      expect(descricao.filter((t) => t.hotel !== undefined)).toEqual([]);
+    }
+  });
+
+  it("dão uma Descrição a cada Hotel, ligada ao Hotel e ao Destino dele", () => {
+    for (const hotel of hoteis) {
+      const descricao = doHotel(hotel.slug);
+
+      expect(descricao.length, hotel.slug).toBeGreaterThan(0);
+      for (const trecho of descricao) {
+        expect(trecho, trecho.id).toMatchObject({
+          tipoDoDocumento: "hotel",
+          documento: { id: `hotel-${hotel.slug}`, titulo: hotel.nome },
+          destino: hotel.destino,
+        });
+      }
+    }
+  });
+
+  it("deixam a Política da Agência sem Destino nem Hotel: ela vale para todos", () => {
+    const daPolitica = trechos.filter(
+      (t) => t.tipoDoDocumento === "politica-da-agencia",
+    );
+
+    expect(daPolitica.length).toBeGreaterThan(0);
+    expect(
+      daPolitica.filter(
+        (t) => t.destino !== undefined || t.hotel !== undefined,
+      ),
+    ).toEqual([]);
+  });
+
+  it("embedam o Trecho de um Hotel com o nome do Hotel e do Destino no prefixo", () => {
+    const [primeiro] = doHotel("serra-azul");
+
+    expect(primeiro.textoEmbedado).toBe(
+      `Hotel Serra Azul, Gramado › ${primeiro.secao}\n\n${primeiro.textoCitado}`,
+    );
+  });
+
+  it("dão a todo Hotel que aceita pet uma seção de pets com porte, taxa e áreas", () => {
+    for (const hotel of hoteis.filter((h) => h.aceitaPet)) {
+      const pets = trechos.find((t) => t.id === `hotel-${hotel.slug}#pets`);
+
+      expect(pets, hotel.slug).toBeDefined();
+      expect(pets?.textoCitado, hotel.slug).toMatch(/porte/i);
+      expect(pets?.textoCitado, hotel.slug).toMatch(/taxa/i);
+      expect(pets?.textoCitado, hotel.slug).toMatch(/áreas?/i);
+      expect(pets?.textoCitado, hotel.slug).not.toMatch(/não aceita/i);
+    }
+  });
+
+  it("nunca dizem que um Hotel sem pet aceita animais", () => {
+    // "aceita pets", "aceitamos animais"... unless right after a "não".
+    const aceita =
+      /(?<!não )\baceita(?:m|mos)?\s+(?:pets?|animais|cães|cachorros?|gatos?)/i;
+    for (const hotel of hoteis.filter((h) => !h.aceitaPet)) {
+      const dizQueAceita = doHotel(hotel.slug).filter((t) =>
+        aceita.test(t.textoCitado),
+      );
+
+      expect(
+        dizQueAceita.map((t) => t.id),
+        hotel.slug,
+      ).toEqual([]);
+      const pets = trechos.find((t) => t.id === `hotel-${hotel.slug}#pets`);
+      if (pets) expect(pets.textoCitado, hotel.slug).toMatch(/não aceita/i);
+    }
+  });
+
+  it("nunca trazem valor em reais, número de Vagas nem data de Saída", () => {
+    const meses =
+      "janeiro|fevereiro|março|abril|maio|junho|julho|agosto|setembro|outubro|novembro|dezembro";
+    const proibido = new RegExp(
+      `R\\$|\\breais\\b|\\b\\d+\\s+vagas?\\b|\\d{4}-\\d{2}-\\d{2}|\\b\\d{1,2}/\\d{1,2}\\b|\\b\\d{1,2}º? de (?:${meses})`,
+      "i",
+    );
+
+    expect(
+      trechos.filter((t) => proibido.test(t.textoCitado)).map((t) => t.id),
+    ).toEqual([]);
+  });
+
+  it("cabem no limite de tamanho de um Trecho (cerca de 400 tokens)", () => {
+    expect(
+      trechos.filter((t) => t.textoEmbedado.length > 1600).map((t) => t.id),
+    ).toEqual([]);
+  });
+
   it("têm ids únicos", () => {
     const ids = trechos.map((t) => t.id);
 
