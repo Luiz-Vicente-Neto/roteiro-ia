@@ -136,9 +136,13 @@ export interface VagasOcupadas {
 }
 
 /** What kind of Documento a text is. */
-export type TipoDeDocumento = "politica-da-agencia" | "destino" | "hotel";
+export type TipoDeDocumento =
+  | "politica-da-agencia"
+  | "destino"
+  | "hotel"
+  | "faq";
 
-/** One section of a Documento: what the search finds and the Assistente cites. */
+/** One section of a Documento (in a FAQ, one question with its answer): what the search finds and the Assistente cites. */
 export interface Trecho {
   /** Stable: the Documento's slug and the section's, e.g. `politica-da-agencia#cancelamento`. */
   id: string;
@@ -148,7 +152,7 @@ export interface Trecho {
   destino?: string;
   /** Slug of the Hotel it describes; absent, it is not about one Hotel. */
   hotel?: string;
-  /** The section heading, as written in the Documento. */
+  /** The section heading, as written in the Documento; in a FAQ, the question. */
   secao: string;
   /** What a Citação shows: the section's text, without its heading. */
   textoCitado: string;

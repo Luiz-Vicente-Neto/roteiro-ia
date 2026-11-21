@@ -15,7 +15,11 @@ const TIPOS: readonly TipoDeDocumento[] = [
   "politica-da-agencia",
   "destino",
   "hotel",
+  "faq",
 ];
+
+/** The title of a FAQ; a Destino's FAQ adds the Destino's name. */
+const FAQ = "Perguntas frequentes";
 
 /** Lowercase ASCII words joined by hyphens: "O que a Pré-reserva garante" → "o-que-a-pre-reserva-garante". */
 function slug(texto: string): string {
@@ -108,11 +112,24 @@ function origemDoDocumento(
       hotel: hotel.slug,
     };
   }
+  if (tipo === "faq") {
+    // A FAQ of a Destino is `faq-<slug>.md` and counts where the Destino's
+    // Descrição counts; without one, it is `faq-geral.md` and counts everywhere.
+    const slugDoDestino = campos.get("destino");
+    if (!slugDoDestino) {
+      conferirNome("geral");
+      return { titulo: FAQ, prefixo: FAQ };
+    }
+    const destino = destinoDe(slugDoDestino);
+    conferirNome(destino.slug);
+    const titulo = `${FAQ} sobre ${destino.nome}`;
+    return { titulo, prefixo: titulo, destino: destino.slug };
+  }
   const titulo = exigir("titulo");
   return { titulo, prefixo: titulo };
 }
 
-/** Every `##` section of the Documento in `arquivo` becomes one Trecho. */
+/** Every `##` section of the Documento in `arquivo` (in a FAQ, every question) becomes one Trecho. */
 function trechosDoArquivo(arquivo: string): Trecho[] {
   const conteudo = readFileSync(join(pasta(), arquivo), "utf8").replace(
     /\r\n/g,

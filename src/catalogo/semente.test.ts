@@ -284,6 +284,52 @@ describe("Trechos dos Documentos", () => {
     ).toEqual([]);
   });
 
+  const faqs = trechos.filter((t) => t.tipoDoDocumento === "faq");
+
+  it("têm cerca de 20 FAQs, gerais e de Destino, sem Hotel", () => {
+    expect(faqs.length).toBeGreaterThanOrEqual(18);
+    expect(faqs.length).toBeLessThanOrEqual(26);
+    expect(faqs.some((t) => t.destino === undefined)).toBe(true);
+    expect(faqs.some((t) => t.destino !== undefined)).toBe(true);
+    expect(faqs.filter((t) => t.hotel !== undefined)).toEqual([]);
+  });
+
+  it("fazem de cada pergunta da FAQ um Trecho, com o id derivado da pergunta e a pergunta no texto embedado", () => {
+    const passaporte = trechos.find(
+      (t) => t.id === "faq-geral#preciso-de-passaporte-para-viajar",
+    );
+
+    expect(passaporte).toMatchObject({
+      documento: { id: "faq-geral", titulo: "Perguntas frequentes" },
+      tipoDoDocumento: "faq",
+      secao: "Preciso de passaporte para viajar?",
+    });
+    expect(passaporte?.destino).toBeUndefined();
+    expect(passaporte?.textoEmbedado).toBe(
+      `Perguntas frequentes › Preciso de passaporte para viajar?\n\n${passaporte?.textoCitado}`,
+    );
+    for (const faq of faqs) {
+      expect(faq.secao, faq.id).toMatch(/\?$/);
+    }
+  });
+
+  it("ligam a FAQ de um Destino ao Destino, com o nome dele no título", () => {
+    const deBonito = trechos.filter(
+      (t) => t.tipoDoDocumento === "faq" && t.destino === "bonito",
+    );
+
+    expect(deBonito.length).toBeGreaterThan(0);
+    for (const trecho of deBonito) {
+      expect(trecho.documento, trecho.id).toEqual({
+        id: "faq-bonito",
+        titulo: "Perguntas frequentes sobre Bonito",
+      });
+      expect(trecho.textoEmbedado, trecho.id).toMatch(
+        /^Perguntas frequentes sobre Bonito › /,
+      );
+    }
+  });
+
   it("embedam o Trecho de um Hotel com o nome do Hotel e do Destino no prefixo", () => {
     const [primeiro] = doHotel("serra-azul");
 
@@ -304,13 +350,15 @@ describe("Trechos dos Documentos", () => {
     }
   });
 
-  it("nunca dizem que um Hotel sem pet aceita animais", () => {
+  it("nunca dizem que um Hotel sem pet aceita animais, nem na Descrição dele nem em outro Documento que o cite", () => {
     // "aceita pets", "aceitamos animais"... unless right after a "não".
     const aceita =
       /(?<!não )\baceita(?:m|mos)?\s+(?:pets?|animais|cães|cachorros?|gatos?)/i;
     for (const hotel of hoteis.filter((h) => !h.aceitaPet)) {
-      const dizQueAceita = doHotel(hotel.slug).filter((t) =>
-        aceita.test(t.textoCitado),
+      const dizQueAceita = trechos.filter(
+        (t) =>
+          (t.hotel === hotel.slug || t.textoCitado.includes(hotel.nome)) &&
+          aceita.test(t.textoCitado),
       );
 
       expect(

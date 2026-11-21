@@ -123,7 +123,7 @@ async function escopoDasPoliticas(
     return destinoDesconhecido(
       nome,
       destinos,
-      "buscar só na Política da Agência",
+      "buscar só nos textos gerais (a Política da Agência e as perguntas frequentes gerais)",
     );
   }
   return encontrado({

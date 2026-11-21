@@ -115,13 +115,50 @@ describe("buscarPoliticas por Destino e por Pacote", () => {
     return resultado.trechos.map((t) => t.id);
   }
 
-  it("sem Destino nem Pacote, responde só com a Política da Agência, nunca com a regra de um Hotel qualquer", async () => {
+  it("sem Destino nem Pacote, responde só com a Política da Agência e as FAQs gerais, nunca com a regra de um Hotel qualquer", async () => {
     const ids = await idsDe({ pergunta: "posso levar meu cachorro?" });
 
     expect(ids).toHaveLength(5);
-    expect(ids.filter((id) => !id.startsWith("politica-da-agencia#"))).toEqual(
-      [],
+    expect(
+      ids.filter((id) => !/^(politica-da-agencia|faq-geral)#/.test(id)),
+    ).toEqual([]);
+  });
+
+  it("uma pergunta igual a uma FAQ geral traz essa FAQ entre os primeiros, sem filtro", async () => {
+    const ids = await idsDe({ pergunta: "Dá para parcelar a viagem?" });
+
+    expect(ids.slice(0, 2)).toContain("faq-geral#da-para-parcelar-a-viagem");
+  });
+
+  it("a FAQ de um Destino aparece com destino daquele Destino", async () => {
+    const ids = await idsDe({
+      pergunta: "Neva em Gramado?",
+      destino: "Gramado",
+    });
+
+    expect(ids.slice(0, 2)).toContain("faq-gramado#neva-em-gramado");
+  });
+
+  it("a FAQ de um Destino nunca aparece sem filtro nem com outro Destino", async () => {
+    expect(await idsDe({ pergunta: "Neva em Gramado?" })).not.toContain(
+      "faq-gramado#neva-em-gramado",
     );
+    for (const destino of semente.destinos) {
+      const ids = await idsDe({
+        pergunta: "Neva em Gramado?",
+        destino: destino.slug,
+      });
+
+      expect(
+        ids.filter(
+          (id) =>
+            id.startsWith("faq-") &&
+            !id.startsWith(`faq-${destino.slug}#`) &&
+            !id.startsWith("faq-geral#"),
+        ),
+        destino.slug,
+      ).toEqual([]);
+    }
   });
 
   it.each(["Bonito", "bonito", "BONITO"])(
@@ -133,9 +170,9 @@ describe("buscarPoliticas por Destino e por Pacote", () => {
     },
   );
 
-  it("com destino, aceita o slug e o nome sem acento, e só traz a Política, o Destino e os Hotéis dele", async () => {
+  it("com destino, aceita o slug e o nome sem acento, e só traz a Política, as FAQs gerais e o Destino e os Hotéis dele", async () => {
     const doDestino =
-      /^(politica-da-agencia|destino-foz-do-iguacu|hotel-(cataratas-park|tres-fronteiras|mata-atlantica-resort))#/;
+      /^(politica-da-agencia|faq-geral|(destino|faq)-foz-do-iguacu|hotel-(cataratas-park|tres-fronteiras|mata-atlantica-resort))#/;
 
     for (const destino of ["foz-do-iguacu", "foz do iguacu"]) {
       const ids = await idsDe({
