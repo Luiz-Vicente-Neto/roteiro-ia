@@ -27,6 +27,13 @@ export interface BaseDeTrechos {
     vetor: number[],
     limite: number,
   ): Promise<TrechoEncontrado[]>;
+  /**
+   * Up to `limite` Trechos holding words of `texto`, best match first. Accents
+   * and case never matter, and stopwords never match; a Trecho with none of
+   * the words never comes back. Postgres also matches by stem, the in-memory
+   * Base only whole words.
+   */
+  buscarPorPalavras(texto: string, limite: number): Promise<TrechoEncontrado[]>;
   /** The model and dimensions the stored vectors came from, or undefined when no Trecho is stored. */
   lerIndice(): Promise<IndiceDosTrechos | undefined>;
 }
@@ -57,6 +64,107 @@ function cosseno(a: number[], b: number[]): number {
   return produto / Math.sqrt(normaA * normaB);
 }
 
+// Words too common to tell Trechos apart. A short hand-picked list, not
+// Postgres's `portuguese` one: the in-memory search only has to be simple.
+const PALAVRAS_VAZIAS = new Set([
+  "a",
+  "o",
+  "as",
+  "os",
+  "e",
+  "de",
+  "da",
+  "do",
+  "das",
+  "dos",
+  "em",
+  "no",
+  "na",
+  "nos",
+  "nas",
+  "um",
+  "uma",
+  "uns",
+  "umas",
+  "num",
+  "numa",
+  "ao",
+  "aos",
+  "que",
+  "com",
+  "por",
+  "para",
+  "pelo",
+  "pela",
+  "pelos",
+  "pelas",
+  "se",
+  "mas",
+  "ou",
+  "como",
+  "mais",
+  "seu",
+  "sua",
+  "seus",
+  "suas",
+  "meu",
+  "minha",
+  "meus",
+  "minhas",
+  "ele",
+  "ela",
+  "eles",
+  "elas",
+  "isso",
+  "isto",
+  "esse",
+  "essa",
+  "este",
+  "esta",
+  "qual",
+  "quando",
+  "onde",
+  "sem",
+  "nao",
+  "tem",
+  "ser",
+  "sao",
+  "foi",
+  "ate",
+  "entre",
+  "tambem",
+  "muito",
+  "ja",
+  "so",
+]);
+
+/** The words of `texto` that count, lowercase and without accents, repeats kept. */
+function palavras(texto: string): string[] {
+  const todas = texto
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .split(/[^\p{L}\p{N}]+/u);
+  // One letter alone ("é" once unaccented) never tells Trechos apart.
+  return todas.filter((p) => p.length > 1 && !PALAVRAS_VAZIAS.has(p));
+}
+
+function semVetor({
+  id,
+  documento,
+  tipoDoDocumento,
+  secao,
+  textoCitado,
+}: TrechoIndexado): TrechoEncontrado {
+  return structuredClone({
+    id,
+    documento,
+    tipoDoDocumento,
+    secao,
+    textoCitado,
+  });
+}
+
 export function criarBaseDeTrechosEmMemoria(
   indice: IndiceDosTrechos,
   trechos: TrechoIndexado[],
@@ -73,18 +181,31 @@ export function criarBaseDeTrechosEmMemoria(
         }))
         .sort((a, b) => b.similaridade - a.similaridade)
         .slice(0, limite)
-        .map(
-          ({
-            trecho: { id, documento, tipoDoDocumento, secao, textoCitado },
-          }) =>
-            structuredClone({
-              id,
-              documento,
-              tipoDoDocumento,
-              secao,
-              textoCitado,
-            }),
-        );
+        .map(({ trecho }) => semVetor(trecho));
+    },
+    async buscarPorPalavras(texto, limite) {
+      const procuradas = new Set(palavras(texto));
+      return guardados
+        .map((trecho) => {
+          const achadas = palavras(trecho.textoEmbedado).filter((p) =>
+            procuradas.has(p),
+          );
+          return {
+            trecho,
+            // Distinct words found first, then how often they appear.
+            distintas: new Set(achadas).size,
+            vezes: achadas.length,
+          };
+        })
+        .filter(({ distintas }) => distintas > 0)
+        .sort(
+          (a, b) =>
+            b.distintas - a.distintas ||
+            b.vezes - a.vezes ||
+            a.trecho.id.localeCompare(b.trecho.id),
+        )
+        .slice(0, limite)
+        .map(({ trecho }) => semVetor(trecho));
     },
     async lerIndice() {
       return guardados.length > 0 ? { ...indice } : undefined;

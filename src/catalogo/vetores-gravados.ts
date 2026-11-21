@@ -20,6 +20,7 @@ export const PERGUNTAS_GRAVADAS = [
   "como posso pagar?",
   "preciso de passaporte?",
   "meu cachorro pode ir?",
+  "o que diz o Estatuto?",
 ] as const;
 
 export interface VetoresGravados extends IndiceDosTrechos {

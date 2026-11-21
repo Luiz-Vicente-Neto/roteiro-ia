@@ -1,14 +1,25 @@
 // Postgres implementation of the Base de Trechos (docs/adr/0005), with pgvector.
-import { asc, cosineDistance, sql } from "drizzle-orm";
+import { asc, cosineDistance, desc, sql } from "drizzle-orm";
 import {
   type BaseDeTrechos,
   conferirVetores,
   type IndiceDosTrechos,
   type TipoDeDocumento,
+  type TrechoEncontrado,
   type TrechoIndexado,
 } from "../catalogo";
 import type { Db } from "./client";
 import { trechos } from "./schema";
+
+function paraTrecho(linha: typeof trechos.$inferSelect): TrechoEncontrado {
+  return {
+    id: linha.id,
+    documento: { id: linha.documentoId, titulo: linha.documentoTitulo },
+    tipoDoDocumento: linha.tipoDoDocumento as TipoDeDocumento,
+    secao: linha.secao,
+    textoCitado: linha.textoCitado,
+  };
+}
 
 export function criarBaseDeTrechosPostgres(db: Db): BaseDeTrechos {
   return {
@@ -18,13 +29,23 @@ export function criarBaseDeTrechosPostgres(db: Db): BaseDeTrechos {
         .from(trechos)
         .orderBy(asc(cosineDistance(trechos.vetor, vetor)), asc(trechos.id))
         .limit(limite);
-      return linhas.map((linha) => ({
-        id: linha.id,
-        documento: { id: linha.documentoId, titulo: linha.documentoTitulo },
-        tipoDoDocumento: linha.tipoDoDocumento as TipoDeDocumento,
-        secao: linha.secao,
-        textoCitado: linha.textoCitado,
-      }));
+      return linhas.map(paraTrecho);
+    },
+    async buscarPorPalavras(texto, limite) {
+      // plainto_tsquery requires every word (AND); a Trecho with any of
+      // them should come back, so the ANDs become ORs. Cast, not to_tsquery,
+      // so the lexemes are not stemmed a second time.
+      const consulta = sql`replace(plainto_tsquery('pt_unaccent', ${texto})::text, ' & ', ' | ')::tsquery`;
+      const linhas = await db
+        .select()
+        .from(trechos)
+        .where(sql`${trechos.palavras} @@ ${consulta}`)
+        .orderBy(
+          desc(sql`ts_rank(${trechos.palavras}, ${consulta})`),
+          asc(trechos.id),
+        )
+        .limit(limite);
+      return linhas.map(paraTrecho);
     },
     async lerIndice() {
       const indices = await db

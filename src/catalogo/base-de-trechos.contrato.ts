@@ -38,6 +38,7 @@ export function testarContratoDaBaseDeTrechos(
 
       expect(await base.lerIndice()).toBeUndefined();
       expect(await base.buscarPorSentido(trechos[0].vetor, 5)).toEqual([]);
+      expect(await base.buscarPorPalavras("cancelamento", 5)).toEqual([]);
     });
 
     it.each([
@@ -90,6 +91,66 @@ export function testarContratoDaBaseDeTrechos(
         secao: cancelamento?.secao,
         textoCitado: cancelamento?.textoCitado,
       });
+    });
+
+    it.each([
+      {
+        termo: "cartorio",
+        esperado: "politica-da-agencia#documentos-de-viagem",
+      },
+      { termo: "QUORUM", esperado: "politica-da-agencia#cancelamento" },
+    ])(
+      'pela busca por palavras, "$termo" digitado sem acento traz $esperado, o Trecho que o contém',
+      async ({ termo, esperado }) => {
+        const base = await criarBase(indice, trechos);
+
+        const encontrados = await base.buscarPorPalavras(termo, 5);
+
+        expect(encontrados.map((t) => t.id)).toContain(esperado);
+      },
+    );
+
+    it("pela busca por palavras, uma palavra que nenhum Trecho tem não traz nada", async () => {
+      const base = await criarBase(indice, trechos);
+
+      expect(await base.buscarPorPalavras("Jericoacoara", 5)).toEqual([]);
+    });
+
+    it.each(["não", "até", "é"])(
+      'pela busca por palavras, uma palavra vazia como "%s" não traz nada, mesmo com acento',
+      async (palavra) => {
+        const base = await criarBase(indice, trechos);
+
+        expect(await base.buscarPorPalavras(palavra, 5)).toEqual([]);
+      },
+    );
+
+    it('pela busca por palavras, uma sigla curta como "RG" traz o Trecho que a contém', async () => {
+      const base = await criarBase(indice, trechos);
+
+      const encontrados = await base.buscarPorPalavras("RG", 5);
+
+      expect(encontrados.map((t) => t.id)).toContain(
+        "politica-da-agencia#documentos-de-viagem",
+      );
+    });
+
+    it("pela busca por palavras, devolve no máximo o limite pedido, sem o vetor", async () => {
+      const base = await criarBase(indice, trechos);
+
+      const encontrados = await base.buscarPorPalavras(
+        "pagamento da Pré-reserva",
+        1,
+      );
+
+      expect(encontrados).toHaveLength(1);
+      expect(Object.keys(encontrados[0]).sort()).toEqual([
+        "documento",
+        "id",
+        "secao",
+        "textoCitado",
+        "tipoDoDocumento",
+      ]);
     });
 
     it("recusa um Trecho cujo vetor não tem as dimensões do índice", async () => {

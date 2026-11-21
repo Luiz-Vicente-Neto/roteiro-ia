@@ -1,0 +1,2 @@
+ALTER TABLE "trechos" ADD COLUMN "palavras" "tsvector" GENERATED ALWAYS AS (to_tsvector('pt_unaccent', texto_embedado)) STORED NOT NULL;--> statement-breakpoint
+CREATE INDEX "trechos_palavras_idx" ON "trechos" USING gin ("palavras");

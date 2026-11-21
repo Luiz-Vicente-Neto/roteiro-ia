@@ -6,6 +6,7 @@ import {
   bigint,
   boolean,
   check,
+  customType,
   date,
   foreignKey,
   index,
@@ -247,15 +248,28 @@ export const itensDeConversa = pgTable(
  * result to a filter (docs/adr/0006). Every row carries the model its vector
  * came from, since vectors of different models never compare.
  */
-export const trechos = pgTable("trechos", {
-  id: text().primaryKey(),
-  documentoId: text("documento_id").notNull(),
-  documentoTitulo: text("documento_titulo").notNull(),
-  tipoDoDocumento: text("tipo_do_documento").notNull(),
-  secao: text().notNull(),
-  textoCitado: text("texto_citado").notNull(),
-  textoEmbedado: text("texto_embedado").notNull(),
-  hash: text().notNull(),
-  modelo: text().notNull(),
-  vetor: vector({ dimensions: 768 }).notNull(),
+const tsvector = customType<{ data: string }>({
+  dataType: () => "tsvector",
 });
+
+export const trechos = pgTable(
+  "trechos",
+  {
+    id: text().primaryKey(),
+    documentoId: text("documento_id").notNull(),
+    documentoTitulo: text("documento_titulo").notNull(),
+    tipoDoDocumento: text("tipo_do_documento").notNull(),
+    secao: text().notNull(),
+    textoCitado: text("texto_citado").notNull(),
+    textoEmbedado: text("texto_embedado").notNull(),
+    hash: text().notNull(),
+    modelo: text().notNull(),
+    vetor: vector({ dimensions: 768 }).notNull(),
+    // The words of the Trecho for the word search: pt_unaccent comes from
+    // migration 0009.
+    palavras: tsvector()
+      .notNull()
+      .generatedAlwaysAs(sql`to_tsvector('pt_unaccent', texto_embedado)`),
+  },
+  (t) => [index("trechos_palavras_idx").using("gin", t.palavras)],
+);

@@ -64,6 +64,20 @@
       "when": 1795261846747,
       "tag": "0008_trechos",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795262792117,
+      "tag": "0009_configura-busca-em-portugues",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795262805907,
+      "tag": "0010_busca-por-palavras-nos-trechos",
+      "breakpoints": true
     }
   ]
 }

@@ -15,6 +15,7 @@ import {
 } from "./entradas";
 import { falha } from "./erros";
 import { criarFerramentas } from "./ferramentas";
+import { fundirPorPosicao } from "./fusao";
 import { recusaDoGrupo } from "./grupo";
 import { gerarCodigoDaPreReserva } from "./pre-reserva";
 import { cotar } from "./preco";
@@ -33,6 +34,8 @@ const VALIDADE_DA_PRE_RESERVA_MS = 24 * 60 * 60 * 1000;
 
 /** buscar_politicas always hands the model this many Trechos. */
 const TRECHOS_POR_BUSCA = 5;
+/** How many Trechos each half of the hybrid search hands to the fusion. */
+const CANDIDATOS_POR_BUSCA = 20;
 
 /** A collision among 32⁴ codes is rare; this many in a row means a bug. */
 const TENTATIVAS_DE_CODIGO = 5;
@@ -177,9 +180,17 @@ export function criarCatalogo({
     async buscarPoliticas(bruta: EntradaBuscarPoliticas) {
       const validacao = validar(entradaBuscarPoliticas, bruta);
       if (!validacao.ok) return validacao;
-      const vetor = await embedarPergunta(validacao.valor.pergunta);
-      const encontrados = await trechos.buscarPorSentido(
-        vetor,
+      const { pergunta } = validacao.valor;
+      const [porSentido, porPalavras] = await Promise.all([
+        embedarPergunta(pergunta).then((vetor) =>
+          trechos.buscarPorSentido(vetor, CANDIDATOS_POR_BUSCA),
+        ),
+        trechos.buscarPorPalavras(pergunta, CANDIDATOS_POR_BUSCA),
+      ]);
+      // The cut comes after the fusion, so a Trecho only one search finds
+      // still competes for the first places.
+      const encontrados = fundirPorPosicao([porSentido, porPalavras]).slice(
+        0,
         TRECHOS_POR_BUSCA,
       );
       return {

@@ -37,6 +37,17 @@ describe("buscarPoliticas", () => {
     });
   });
 
+  it('"o que diz o Estatuto?" traz primeiro o único Trecho com o nome, que a busca semântica sozinha põe em segundo', async () => {
+    const resultado = await catalogo.buscarPoliticas({
+      pergunta: "o que diz o Estatuto?",
+    });
+    if (!resultado.ok) throw new Error(resultado.mensagem);
+
+    expect(resultado.trechos[0].id).toBe(
+      "politica-da-agencia#documentos-de-viagem",
+    );
+  });
+
   it("devolve sempre os 5 primeiros Trechos, sem nota nem score", async () => {
     const resultado = await catalogo.buscarPoliticas({
       pergunta: "meu cachorro pode ir?",
