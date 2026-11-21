@@ -24,6 +24,70 @@ const destinoDoHotel = (hotel: string) =>
 const destinoDaSaida = (saida: Saida) =>
   destinoDoHotel(pacotes.find((p) => p.slug === saida.pacote)?.hotel ?? "");
 
+/** Hotéis in which every Pacote has the Política de Crianças without children. */
+const hoteisSoParaAdultos = hoteis
+  .filter((h) => {
+    const doHotel = pacotes.filter((p) => p.hotel === h.slug);
+    return (
+      doHotel.length > 0 &&
+      doHotel.every((p) => !p.politicaDeCriancas.aceitaCriancas)
+    );
+  })
+  .map((h) => h.slug);
+
+/** Things only a Hotel that takes children has. */
+const estruturaInfantil =
+  /certid(?:ão|ões)|documentos? d[aeo]s? (?:crianças?|menor(?:es)?)|\b(?:área|piscina|espaço|clube|recreação|cardápio|menu)s? (?:infantil|infantis|kids)\b|kids club|brinquedoteca|berços?\b/i;
+
+/** The one way such a Hotel may mention children: saying it does not take them. */
+const naoRecebeCriancas =
+  /\bnão (?:recebe|aceita|hospeda)m?\b[^.!?]*\bcrianças?\b/i;
+
+/**
+ * The sentences of `texto` that contradict a Hotel only for adults: one with
+ * child-only structure or papers, or one about children that is not a refusal.
+ * "Crianças até 5 anos não pagam" has a "não" and still says the Hotel takes them.
+ */
+function contradizSoAdultos(texto: string): string[] {
+  return texto
+    .split(/(?<=[.!?])\s+/)
+    .filter(
+      (frase) =>
+        estruturaInfantil.test(frase) ||
+        (/\bcrianças?\b/i.test(frase) && !naoRecebeCriancas.test(frase)),
+    );
+}
+
+/** What people call a feriado, and the name of its Período in the seed. */
+const NOME_OFICIAL_DO_APELIDO: Record<string, string> = {
+  Réveillon: "Confraternização Universal",
+  "Ano-Novo": "Confraternização Universal",
+  "Ano Novo": "Confraternização Universal",
+  Páscoa: "Sexta-feira Santa",
+  "Semana Santa": "Sexta-feira Santa",
+};
+
+const escaparRegex = (texto: string) =>
+  texto.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+const regexDoApelido = (apelido: string) =>
+  new RegExp(`\\b${escaparRegex(apelido)}(?![\\p{L}-])`, "giu");
+
+/**
+ * The feriado nicknames in `texto` that do not sit in parentheses right after
+ * the name of their own Período: "Confraternização Universal (o Ano-Novo)"
+ * passes, "Carnaval (o Réveillon)" does not.
+ */
+function apelidosDeFeriado(texto: string): string[] {
+  return Object.entries(NOME_OFICIAL_DO_APELIDO).flatMap(([apelido, nome]) => {
+    const explicado = new RegExp(
+      `${escaparRegex(nome)} \\([^)]*\\b${escaparRegex(apelido)}[^)]*\\)`,
+      "giu",
+    );
+    return texto.replace(explicado, "").match(regexDoApelido(apelido)) ?? [];
+  });
+}
+
 /** Days between two ISO dates. */
 const diasEntre = (a: string, b: string) =>
   (Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000;
@@ -368,6 +432,89 @@ describe("Trechos dos Documentos", () => {
       const pets = trechos.find((t) => t.id === `hotel-${hotel.slug}#pets`);
       if (pets) expect(pets.textoCitado, hotel.slug).toMatch(/não aceita/i);
     }
+  });
+
+  describe("de um Hotel só para adultos", () => {
+    it("reprovam certidão e estrutura infantil, e aceitam dizer que o Hotel não recebe crianças", () => {
+      expect(
+        contradizSoAdultos(
+          "No check-in, apresente a certidão de nascimento das crianças.",
+        ),
+      ).not.toEqual([]);
+      expect(contradizSoAdultos("Há berço sob pedido.")).not.toEqual([]);
+      expect(contradizSoAdultos("Crianças até 5 anos não pagam.")).not.toEqual(
+        [],
+      );
+      expect(contradizSoAdultos("Leve o documento do menor.")).not.toEqual([]);
+      expect(contradizSoAdultos("A piscina infantil é aquecida.")).not.toEqual(
+        [],
+      );
+      expect(contradizSoAdultos("O clube infantil abre às 9h.")).not.toEqual(
+        [],
+      );
+      expect(
+        contradizSoAdultos(
+          "Tem spa e piscina aquecida. O Hotel não recebe crianças.",
+        ),
+      ).toEqual([]);
+    });
+
+    it("só citam crianças para dizer que o Hotel não as recebe", () => {
+      expect(hoteisSoParaAdultos.length).toBeGreaterThan(0);
+      for (const hotel of hoteisSoParaAdultos) {
+        const contradicoes = trechos
+          .filter((t) => t.hotel === hotel)
+          .flatMap((t) =>
+            contradizSoAdultos(t.textoCitado).map(
+              (frase) => `${t.id}: ${frase}`,
+            ),
+          );
+
+        expect(contradicoes, hotel).toEqual([]);
+      }
+    });
+  });
+
+  describe("de Hotel e de FAQ", () => {
+    it("ligam cada apelido ao nome de um feriado da semente", () => {
+      const nomes = new Set(feriados.map((f) => f.nome));
+
+      expect(
+        Object.values(NOME_OFICIAL_DO_APELIDO).filter((n) => !nomes.has(n)),
+      ).toEqual([]);
+    });
+
+    it("reprovam apelido de feriado, e aceitam o apelido entre parênteses depois do nome do Período", () => {
+      expect(
+        apelidosDeFeriado("As Saídas do Réveillon não têm reembolso."),
+      ).toEqual(["Réveillon"]);
+      expect(apelidosDeFeriado("Na Páscoa, o Hotel lota.")).toEqual(["Páscoa"]);
+      expect(apelidosDeFeriado("A Semana Santa tem tarifa própria.")).toEqual([
+        "Semana Santa",
+      ]);
+      expect(apelidosDeFeriado("No Carnaval (o Réveillon), lota.")).toEqual([
+        "Réveillon",
+      ]);
+      expect(
+        apelidosDeFeriado(
+          "As Saídas de Confraternização Universal (o Ano-Novo) não têm reembolso.",
+        ),
+      ).toEqual([]);
+    });
+
+    it("só citam feriados pelo nome de um Período da semente", () => {
+      const comApelido = trechos
+        .filter(
+          (t) => t.tipoDoDocumento === "hotel" || t.tipoDoDocumento === "faq",
+        )
+        .flatMap((t) =>
+          apelidosDeFeriado(t.textoCitado).map(
+            (apelido) => `${t.id}: ${apelido}`,
+          ),
+        );
+
+      expect(comApelido).toEqual([]);
+    });
   });
 
   it("nunca trazem valor em reais, número de Vagas nem data de Saída", () => {
