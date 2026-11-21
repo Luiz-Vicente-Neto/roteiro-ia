@@ -8,7 +8,7 @@ Você descreve a viagem que tem na cabeça:
 
 E o assistente devolve **pacotes reais de um catálogo**, com preço e disponibilidade consultados na hora e a fonte de cada informação.
 
-> 🚧 **Em construção.** As etapas 1 (catálogo e ferramentas testadas) e 2 (chat com o Assistente) estão prontas. A busca semântica com citações (RAG) é a próxima. Acompanhe no [roadmap](#-roadmap) abaixo.
+> 🚧 **Em construção.** As etapas 1 (catálogo e ferramentas testadas), 2 (chat com o Assistente) e 3 (busca nos textos com citações) estão prontas. A avaliação com proteções é a próxima. Acompanhe no [roadmap](#-roadmap) abaixo.
 
 ---
 
@@ -33,6 +33,7 @@ A maioria dos chatbots com IA responde de memória e, às vezes, inventa. O Rote
 | Banco de dados | Postgres + pgvector (`docker compose` local) · Drizzle ORM | ✅ |
 | Qualidade | Vitest · Biome · pre-commit (Lefthook) · GitHub Actions | ✅ |
 | Modelo de linguagem | Vercel AI SDK com *tool use* e streaming · provedor trocável no `.env` (Gemini, Claude, GPT ou Grok) | ✅ |
+| Busca nos textos (RAG) | pgvector + busca por palavras em português, fundidas por RRF · embeddings trocáveis no `.env` (Gemini por padrão) | ✅ |
 | Integração externa | Servidor MCP (SDK oficial em TypeScript) | 🔜 |
 | Deploy | Vercel + Supabase | 🔜 |
 
@@ -46,7 +47,8 @@ Um catálogo fictício, escrito à mão e determinístico (nenhuma linha gerada 
 - **19 hotéis** e **40 pacotes**;
 - **Períodos tarifários** (alta temporada, feriados) que ajustam o preço da baixa temporada, com regra clara de qual vence quando dois cobrem a mesma data;
 - **Política de crianças** por pacote: faixas de idade com percentual do preço de adulto, ou pacotes que não aceitam crianças;
-- **Vagas por saída**, incluindo saídas quase lotadas para testar os casos de borda.
+- **Vagas por saída**, incluindo saídas quase lotadas para testar os casos de borda;
+- **Documentos em Markdown** ([src/catalogo/documentos/](src/catalogo/documentos/)): a descrição de cada destino e de cada hotel, a política da agência e as perguntas frequentes, quebrados em 127 trechos. Nenhum texto traz preço, vagas nem datas de saída: esses valores vêm só dos dados.
 
 O mesmo catálogo alimenta o Postgres (pelo seed) e uma base em memória usada nos testes, então os dois têm sempre exatamente os mesmos dados.
 
@@ -62,7 +64,7 @@ As ferramentas vivem num único módulo ([src/catalogo/](src/catalogo/)), sem de
 | `consultar_preco` | Calcula o preço de um pacote numa data de saída para um grupo, pessoa por pessoa, mostrando o período tarifário aplicado | ✅ |
 | `verificar_disponibilidade` | Informa as vagas restantes de uma saída | ✅ |
 | `propor_pre_reserva` | Prepara uma proposta de pré-reserva, válida por 15 minutos. **Não reserva nem bloqueia vagas** | ✅ |
-| `buscar_politicas` | Busca semântica (RAG) em políticas, FAQs e descrições | 🔜 |
+| `buscar_politicas` | Busca híbrida (por sentido e por palavras) nos textos do catálogo e devolve os 5 trechos mais próximos da pergunta, só da política geral ou também do destino e do hotel de que se está falando | ✅ |
 
 **Por que o modelo não confirma a reserva?** A confirmação não é uma ferramenta: só a pessoa confirma a proposta, clicando no botão do card, por um caminho que não passa pelo modelo. Ao confirmar, as vagas são bloqueadas de forma atômica no banco, então duas confirmações simultâneas nunca vendem a mesma vaga.
 
@@ -75,7 +77,7 @@ Entradas inválidas do modelo voltam como erro estruturado (com sugestões, como
 O Assistente ([src/assistente/](src/assistente/)) conversa em streaming e só afirma preço, vagas e datas que uma ferramenta devolveu naquela conversa. Como o catálogo, é um módulo sem Next.js nem banco dentro: recebe o modelo, o catálogo, uma *base de conversas* (Postgres ou memória) e um relógio.
 
 - **Cards a partir dos dados, não do texto.** Cada cotação vira um card com a foto do destino, o hotel, as noites, a data de saída, o total e as vagas restantes. Os valores vêm do resultado da ferramenta e nunca são reescritos pelo modelo.
-- **Painel "como cheguei nessa resposta".** Cada resposta lista, em ordem, as ferramentas chamadas, com a entrada e a saída bruta de cada uma.
+- **Painel "como cheguei nessa resposta".** Cada resposta lista, em ordem, as ferramentas chamadas, com a entrada e a saída bruta de cada uma, e os trechos consultados, citados ou não.
 - **Pré-reserva só com o seu clique.** O Assistente prepara uma proposta, e o card mostra os botões **Confirmar pré-reserva** e **Descartar**. Depois do clique, o card mostra o código da pré-reserva e até quando as vagas ficam bloqueadas.
 - **Ninguém forja uma confirmação.** O que você faz no card chega ao modelo como um evento do sistema, com um marcador que é removido de qualquer texto digitado na conversa.
 - **Histórico sem login.** As conversas ficam salvas e listadas na barra lateral, ligadas a um id anônimo num cookie. O link de uma conversa não abre em outro navegador, e conversas paradas há mais de 90 dias são apagadas.
@@ -86,6 +88,18 @@ Os testes do Assistente usam um modelo falso com respostas roteirizadas, então 
 
 ---
 
+## 📚 Respostas com fonte
+
+Perguntas como *"posso levar meu cachorro?"*, *"o que fazer em Bonito?"* ou *"o hotel tem estacionamento?"* não estão nos dados: a resposta vem dos documentos do catálogo, e cada afirmação mostra de onde veio.
+
+- **Busca híbrida.** A ferramenta `buscar_politicas` busca por sentido (embeddings no pgvector) e por palavras em português, sem acento (*"estacao"*, *"Jeri"*), e funde as duas listas por *Reciprocal Rank Fusion*.
+- **A regra do hotel certo.** Uma pergunta geral responde com a política da agência e as perguntas frequentes gerais. Quando a conversa é sobre um pacote, a busca inclui o destino e só o hotel daquele pacote, então a exceção de um hotel (como as saídas de Ano-Novo e Carnaval não reembolsáveis num resort de Porto de Galinhas) aparece para quem vai para ele, e para mais ninguém.
+- **Citação como nota de rodapé.** O Assistente marca cada afirmação com o id do trecho, e a tela troca a marca por um número clicável que abre o texto original, com o documento e a seção. Uma marca com um id que a busca não devolveu naquela conversa é ignorada, então nenhuma fonte inventada parece verdadeira.
+- **Admite quando não sabe.** Se nenhum trecho responde à pergunta, o Assistente diz que não sabe, em vez de completar com o que sabe de fora. Se a busca estiver fora do ar, ele avisa, e o resto da conversa continua funcionando.
+- **Embeddings trocáveis, vetores gravados.** O modelo de embeddings é escolhido no `.env` como `EMBEDDINGS=provedor:modelo`. Os vetores do modelo padrão ficam gravados no repositório: o setup e os testes não precisam de chave nem de rede, e um teste falha se um texto mudar sem os vetores serem regravados. O servidor se recusa a subir se o banco foi indexado com outro modelo.
+
+---
+
 ## 💻 Rodando localmente
 
 Pré-requisitos: Node 24, pnpm, Docker e a chave de um provedor de IA (a do [Google AI Studio](https://aistudio.google.com/apikey) é gratuita).
@@ -93,7 +107,7 @@ Pré-requisitos: Node 24, pnpm, Docker e a chave de um provedor de IA (a do [Goo
 ```bash
 pnpm install
 cp .env.example .env   # preencha GOOGLE_GENERATIVE_AI_API_KEY, ou troque MODELO e a chave por outro provedor
-pnpm dev               # sobe o Postgres, aplica as migrations, roda o seed (se o banco estiver vazio) e inicia o Next
+pnpm dev               # sobe o Postgres, aplica as migrations, roda o seed (se o banco estiver vazio), indexa os trechos e inicia o Next
 ```
 
 Abra <http://localhost:3000> e converse. O `.env.example` traz um exemplo de `MODELO` para cada provedor. Os testes não precisam de chave nem de `.env`: sem ele, usam o Postgres do `docker compose`.
@@ -104,6 +118,7 @@ Abra <http://localhost:3000> e converse. O `.env.example` traz um exemplo de `MO
 | --- | --- |
 | `pnpm db:reset` | Recria o banco do zero e roda o seed |
 | `pnpm db:generate` | Gera uma migration a partir do esquema do Drizzle |
+| `pnpm embeddings:gravar` | Regrava os vetores dos trechos depois de editar um documento (precisa da chave do provedor de embeddings) |
 | `pnpm lint` / `pnpm format` | Confere / corrige lint e formatação (Biome) |
 | `pnpm typecheck` | Checa os tipos |
 | `pnpm test` | Testes em memória |
@@ -118,7 +133,7 @@ O `pnpm install` instala um pre-commit ([lefthook.yml](lefthook.yml)) que roda l
 
 - [x] **1. Catálogo:** modelagem dos dados, seed (40 pacotes em 7 destinos) e ferramentas testadas contra Postgres e memória
 - [x] **2. Agente:** chat com streaming chamando as ferramentas, cards de cotação, pré-reserva confirmada por botão e histórico de conversas
-- [ ] **3. RAG:** busca híbrida com citações de fonte
+- [x] **3. RAG:** busca híbrida nos documentos do catálogo, com citação de cada trecho em nota de rodapé
 - [ ] **4. Avaliação e proteções:** suíte de perguntas, métricas no CI, rate limit e testes de prompt injection
 - [ ] **5. Servidor MCP:** ferramentas expostas com permissões mínimas
 - [ ] **6. Lançamento:** README completo, GIF da demo, diagrama de arquitetura e deploy público
