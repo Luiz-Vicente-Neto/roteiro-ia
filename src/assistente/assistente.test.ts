@@ -1148,7 +1148,7 @@ describe("Proposta", () => {
   it("confirmar uma Proposta válida cria a Pré-reserva, grava um Evento, e a próxima chamada ao modelo recebe o Evento com o marcador", async () => {
     const {
       assistente,
-      catalogo,
+      catalogo: catalogoDasPropostas,
       enviarEm,
       conversaComPropostas,
       ultimoPrompt,
@@ -1168,7 +1168,9 @@ describe("Proposta", () => {
     });
     if (!confirmacao.ok) throw new Error("Não confirmou");
     const { codigo } = confirmacao.preReserva;
-    expect(await catalogo.verificarDisponibilidade(gramado)).toMatchObject({
+    expect(
+      await catalogoDasPropostas.verificarDisponibilidade(gramado),
+    ).toMatchObject({
       vagasRestantes: 1,
     });
     const itens = await assistente.abrirConversa({ dono, conversa });
@@ -1187,7 +1189,7 @@ describe("Proposta", () => {
   it("descartar grava só um Evento, e as Vagas continuam livres", async () => {
     const {
       assistente,
-      catalogo,
+      catalogo: catalogoDasPropostas,
       enviarEm,
       conversaComPropostas,
       ultimoPrompt,
@@ -1199,7 +1201,9 @@ describe("Proposta", () => {
       await assistente.descartarProposta({ dono, conversa, proposta }),
     ).toMatchObject({ ok: true });
 
-    expect(await catalogo.verificarDisponibilidade(gramado)).toMatchObject({
+    expect(
+      await catalogoDasPropostas.verificarDisponibilidade(gramado),
+    ).toMatchObject({
       vagasRestantes: 3,
     });
     const itens = await assistente.abrirConversa({ dono, conversa });
@@ -1316,8 +1320,11 @@ describe("Proposta", () => {
   });
 
   it("outro dono não consegue confirmar nem descartar, nem ver o estado das Propostas", async () => {
-    const { assistente, catalogo, conversaComPropostas } =
-      assistenteComPropostas(gramado);
+    const {
+      assistente,
+      catalogo: catalogoDasPropostas,
+      conversaComPropostas,
+    } = assistenteComPropostas(gramado);
     const { conversa, ids } = await conversaComPropostas();
     const [proposta = ""] = ids;
     const outro = "outro-dono";
@@ -1337,7 +1344,9 @@ describe("Proposta", () => {
       await assistente.estadosDasPropostas({ dono: outro, conversa }),
     ).toBeUndefined();
 
-    expect(await catalogo.verificarDisponibilidade(gramado)).toMatchObject({
+    expect(
+      await catalogoDasPropostas.verificarDisponibilidade(gramado),
+    ).toMatchObject({
       vagasRestantes: 3,
     });
     const itens = await assistente.abrirConversa({ dono, conversa });

@@ -24,7 +24,15 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "preset": "recommended"
+      "preset": "recommended",
+      "correctness": {
+        "noUnusedVariables": "error",
+        "noUnusedFunctionParameters": "error",
+        "noUnusedImports": "error"
+      },
+      "suspicious": {
+        "noShadow": "error"
+      }
     },
     "domains": {
       "next": "recommended",
@@ -32,6 +40,37 @@
     }
   },
   "overrides": [
+    {
+      "includes": [
+        "src/app/**",
+        "src/db/**",
+        "src/*.ts",
+        "scripts/**",
+        "!**/*.test.ts"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "**/catalogo/*",
+                      "**/assistente/*",
+                      "!**/assistente/resposta",
+                      "!**/assistente/mensagens"
+                    ],
+                    "message": "Fora do módulo, importe de @/catalogo ou @/assistente (o index.ts). Só resposta.ts e mensagens.ts, que rodam no navegador, são importados direto."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
     {
       "includes": ["src/catalogo/**", "src/assistente/**"],
       "linter": {

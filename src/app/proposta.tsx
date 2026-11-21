@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import type { Evento } from "@/assistente/base";
+import type { Evento } from "@/assistente";
 import type { EstadoDaProposta, PropostaDoCard } from "@/assistente/resposta";
 import { dataLonga, diaEHora, grupoPorExtenso, hora, reais } from "./formato";
 import { fotoDoDestino } from "./fotos";

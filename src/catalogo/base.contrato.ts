@@ -211,12 +211,12 @@ export function testarContratoDaBase(nome: string, criarBase: CriarBase) {
 
       const catalogo = await base.lerCatalogo();
 
-      const contagens = (dados: DadosDoCatalogo) => ({
-        destinos: dados.destinos.length,
-        hoteis: dados.hoteis.length,
-        pacotes: dados.pacotes.length,
-        saidas: dados.saidas.length,
-        periodos: dados.periodos.length,
+      const contagens = (de: DadosDoCatalogo) => ({
+        destinos: de.destinos.length,
+        hoteis: de.hoteis.length,
+        pacotes: de.pacotes.length,
+        saidas: de.saidas.length,
+        periodos: de.periodos.length,
       });
       expect(contagens(catalogo)).toEqual(contagens(semente));
       const amostra = {

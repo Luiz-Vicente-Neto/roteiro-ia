@@ -10,7 +10,7 @@ import {
   useState,
   useTransition,
 } from "react";
-import type { EventoDaConversa } from "@/assistente/base";
+import type { EventoDaConversa } from "@/assistente";
 import {
   ASSISTENTE_INDISPONIVEL,
   COMECE_UMA_NOVA_CONVERSA,

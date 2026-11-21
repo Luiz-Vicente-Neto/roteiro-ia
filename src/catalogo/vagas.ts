@@ -20,12 +20,12 @@ export type CatalogoVigente = DadosDoCatalogo & { ocupacao: Ocupacao };
  * Pré-reservas. The single place every operation asks.
  */
 export function vagasRestantes(
-  { ocupacao }: CatalogoVigente,
+  { ocupacao: ocupadas }: CatalogoVigente,
   saida: Saida,
 ): number {
   return (
     saida.vagasTotais -
-    (ocupacao.get(chaveDaSaida(saida.pacote, saida.data)) ?? 0)
+    (ocupadas.get(chaveDaSaida(saida.pacote, saida.data)) ?? 0)
   );
 }
 

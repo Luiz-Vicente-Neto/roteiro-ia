@@ -6,9 +6,7 @@
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
-  const { resolverModelo, resolverEmbeddings } = await import(
-    "./assistente/modelo"
-  );
+  const { resolverModelo, resolverEmbeddings } = await import("./assistente");
   const { conferirIndiceDosTrechos } = await import("./catalogo");
   const { createDb } = await import("./db/client");
   const { databaseUrl } = await import("./db/env");
