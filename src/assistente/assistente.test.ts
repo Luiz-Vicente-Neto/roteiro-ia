@@ -5,7 +5,13 @@ import {
   MockLanguageModelV4,
 } from "ai/test";
 import { describe, expect, it } from "vitest";
-import { criarBaseEmMemoria, criarCatalogo, relogioFixo } from "../catalogo";
+import {
+  type CodigoDeErro,
+  criarBaseEmMemoria,
+  criarCatalogo,
+  type Falha,
+  relogioFixo,
+} from "../catalogo";
 import { catalogoDeTeste } from "../catalogo/catalogo-de-teste";
 import { buscaNosTextosDeTeste } from "../catalogo/textos-de-teste";
 import {
@@ -22,9 +28,43 @@ import {
   trechosDaChamada,
 } from ".";
 
+/**
+ * Exceptions thrown inside a tool or inside the embedding it calls, since
+ * the current message was sent. The catalog turns a failed embedding into
+ * BUSCA_INDISPONIVEL and the Assistente hides a tool's exception from the
+ * Viajante, so a test would never see the cause without this record.
+ */
+const excecoes: string[] = [];
+
+/** `f`, recording what it throws in `excecoes` before throwing it on. */
+function vigiar<A extends unknown[], R>(
+  onde: string,
+  f: (...args: A) => Promise<R>,
+): (...args: A) => Promise<R> {
+  return async (...args) => {
+    try {
+      return await f(...args);
+    } catch (erro) {
+      excecoes.push(
+        `${onde}: ${erro instanceof Error ? erro.message : String(erro)}`,
+      );
+      throw erro;
+    }
+  };
+}
+
+/** buscaNosTextosDeTeste, with the embedding's exceptions recorded. */
+function textosDeTeste() {
+  const busca = buscaNosTextosDeTeste();
+  return {
+    ...busca,
+    embedarPergunta: vigiar("embedding da pergunta", busca.embedarPergunta),
+  };
+}
+
 const relogio = relogioFixo("2026-12-01T09:00:00-03:00");
 const catalogo = criarCatalogo({
-  ...buscaNosTextosDeTeste(),
+  ...textosDeTeste(),
   base: criarBaseEmMemoria(catalogoDeTeste),
   relogio,
 });
@@ -65,16 +105,36 @@ function passoDeTexto(conteudo: string): RespostaRoteirizada {
   };
 }
 
-/** One model step that calls the tool `nome` with `entrada`. */
+/**
+ * How a test declares that a tool call fails: the catalog's code, or
+ * ERRO_DO_SDK when the SDK refuses the call before any tool runs (a tool
+ * that does not exist).
+ */
+type FalhaEsperada = CodigoDeErro | "ERRO_DO_SDK";
+
+/**
+ * The failure each tool call of the test expects, by toolCallId. A call
+ * that is not here must succeed (see conferirFerramentas).
+ */
+const falhasEsperadas = new Map<string, FalhaEsperada>();
+
+/**
+ * One model step that calls the tool `nome` with `entrada`. A test that
+ * wants the call to fail declares the code in `falha`; any other failure
+ * fails the test when it reads the answer.
+ */
 function passoDeFerramenta(
   nome: string,
   entrada: unknown,
+  { falha }: { falha?: FalhaEsperada } = {},
 ): RespostaRoteirizada {
+  const id = crypto.randomUUID();
+  if (falha) falhasEsperadas.set(id, falha);
   return {
     stream: convertArrayToReadableStream([
       {
         type: "tool-call",
-        toolCallId: crypto.randomUUID(),
+        toolCallId: id,
         toolName: nome,
         input: JSON.stringify(entrada),
       },
@@ -87,11 +147,100 @@ function passoDeFerramenta(
   };
 }
 
+/**
+ * Passes the stream through, and errors it at the end if a tool call failed
+ * in a way the test did not declare with passoDeFerramenta, or if anything
+ * inside a tool threw: the test then fails next to the cause, with the tool,
+ * the code and the mensagem, or the exception's message.
+ */
+function conferirFerramentas(
+  stream: ReadableStream<UIMessageChunk>,
+): ReadableStream<UIMessageChunk> {
+  const nomes = new Map<string, string>();
+  const problemas: string[] = [];
+  return stream.pipeThrough(
+    new TransformStream<UIMessageChunk, UIMessageChunk>({
+      transform(chunk, controller) {
+        if (chunk.type === "tool-input-available") {
+          nomes.set(chunk.toolCallId, chunk.toolName);
+        }
+        if (chunk.type === "tool-output-available") {
+          const nome = nomes.get(chunk.toolCallId);
+          const esperada = falhasEsperadas.get(chunk.toolCallId);
+          const saida = chunk.output as { ok: true } | Falha;
+          if (!saida.ok && saida.erro !== esperada) {
+            problemas.push(
+              `${nome} falhou com ${saida.erro}: ${saida.mensagem}` +
+                (esperada ? ` (o teste esperava ${esperada})` : ""),
+            );
+          }
+          if (saida.ok && esperada) {
+            problemas.push(
+              `${nome} deu certo, mas o teste esperava ${esperada}`,
+            );
+          }
+        }
+        if (
+          chunk.type === "tool-input-error" &&
+          falhasEsperadas.get(chunk.toolCallId) !== "ERRO_DO_SDK"
+        ) {
+          problemas.push(
+            `${chunk.toolName} foi recusada pelo SDK: ${chunk.errorText}`,
+          );
+        }
+        if (chunk.type === "tool-output-error") {
+          problemas.push(
+            `${nomes.get(chunk.toolCallId)} deu erro: ${chunk.errorText}`,
+          );
+        }
+        controller.enqueue(chunk);
+      },
+      flush() {
+        problemas.push(...excecoes.splice(0).map((e) => `exceção em ${e}`));
+        if (problemas.length > 0) {
+          throw new Error(
+            `Ferramenta falhou sem o teste esperar:\n${problemas.join("\n")}`,
+          );
+        }
+      },
+    }),
+  );
+}
+
+/**
+ * criarAssistente, with the tools' exceptions recorded and every answer's
+ * stream checked by conferirFerramentas.
+ */
+function criarAssistenteDeTeste(
+  opcoes: Parameters<typeof criarAssistente>[0],
+): ReturnType<typeof criarAssistente> {
+  const assistente = criarAssistente({
+    ...opcoes,
+    catalogo: {
+      ...opcoes.catalogo,
+      ferramentas: opcoes.catalogo.ferramentas.map((f) => ({
+        ...f,
+        executar: vigiar(f.nome, f.executar),
+      })),
+    },
+  });
+  return {
+    ...assistente,
+    async enviarMensagem(pedido) {
+      excecoes.length = 0;
+      const envio = await assistente.enviarMensagem(pedido);
+      return envio.ok
+        ? { ...envio, stream: conferirFerramentas(envio.stream) }
+        : envio;
+    },
+  };
+}
+
 function assistenteCom(
   modelo: MockLanguageModelV4,
   conversas = criarBaseDeConversasEmMemoria(),
 ) {
-  return criarAssistente({ modelo, catalogo, conversas, relogio });
+  return criarAssistenteDeTeste({ modelo, catalogo, conversas, relogio });
 }
 
 const dono = "dono-de-teste";
@@ -120,6 +269,123 @@ async function enviar(
 ): Promise<UIMessageChunk[]> {
   return convertReadableStreamToArray(await abrirStream(modelo, mensagem));
 }
+
+describe("helpers do modelo falso", () => {
+  it("uma falha de ferramenta que o teste não declarou reprova a leitura da resposta, com a ferramenta, o código e a mensagem", async () => {
+    const entrada = { pacote: "gramado-serra-azul-3n", data: "09/01/2027" };
+    const falhou = await catalogo.verificarDisponibilidade(entrada);
+    if (falhou.ok) throw new Error("A chamada do teste precisa falhar");
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("verificar_disponibilidade", entrada),
+        passoDeTexto("Vou corrigir a data."),
+      ],
+    });
+
+    const leitura = enviar(modelo);
+
+    await expect(leitura).rejects.toThrow("verificar_disponibilidade");
+    await expect(leitura).rejects.toThrow("ENTRADA_INVALIDA");
+    await expect(leitura).rejects.toThrow(falhou.mensagem);
+  });
+
+  it("buscar_politicas com uma pergunta fora de PERGUNTAS_GRAVADAS reprova o teste, dizendo que a pergunta não tem vetor gravado", async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("buscar_politicas", {
+          pergunta: "aceita pagamento em Pix?",
+        }),
+        passoDeTexto("Paga com Pix."),
+      ],
+    });
+
+    await expect(resposta(modelo)).rejects.toThrow(
+      '"aceita pagamento em Pix?" não está em PERGUNTAS_GRAVADAS',
+    );
+  });
+
+  it("uma exceção dentro da ferramenta reprova o teste, com a mensagem dela", async () => {
+    const comBug = {
+      ...catalogo,
+      ferramentas: catalogo.ferramentas.map((f) =>
+        f.nome === "consultar_preco"
+          ? {
+              ...f,
+              executar: async () => {
+                throw new Error("bug: tarifa sem moeda");
+              },
+            }
+          : f,
+      ),
+    };
+    const assistente = criarAssistenteDeTeste({
+      modelo: new MockLanguageModelV4({
+        doStream: [
+          passoDeFerramenta("consultar_preco", {
+            pacote: "gramado-serra-azul-3n",
+            data: "2027-01-09",
+            grupo: casal,
+          }),
+          passoDeTexto("Não consegui o preço."),
+        ],
+      }),
+      catalogo: comBug,
+      conversas: criarBaseDeConversasEmMemoria(),
+      relogio,
+    });
+
+    const envio = await assistente.enviarMensagem({ dono, texto: "Quanto?" });
+    if (!envio.ok) throw new Error(envio.erro);
+
+    await expect(convertReadableStreamToArray(envio.stream)).rejects.toThrow(
+      "exceção em consultar_preco: bug: tarifa sem moeda",
+    );
+  });
+
+  it("uma chamada que o SDK recusa, como a de uma ferramenta que não existe, também reprova o teste", async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("ferramenta_que_nao_existe", {}),
+        passoDeTexto("Vou tentar de outro jeito."),
+      ],
+    });
+
+    await expect(enviar(modelo)).rejects.toThrow("ferramenta_que_nao_existe");
+  });
+
+  it("uma chamada declarada como falha que dá certo também reprova o teste", async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta(
+          "verificar_disponibilidade",
+          { pacote: "gramado-serra-azul-3n", data: "2027-01-09" },
+          { falha: "ENTRADA_INVALIDA" },
+        ),
+        passoDeTexto("Ainda há Vagas."),
+      ],
+    });
+
+    await expect(enviar(modelo)).rejects.toThrow(
+      "verificar_disponibilidade deu certo, mas o teste esperava ENTRADA_INVALIDA",
+    );
+  });
+
+  it("a resposta montada como na tela também reprova a falha não declarada", async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [
+        passoDeFerramenta("verificar_disponibilidade", {
+          pacote: "gramado-serra-azul-3n",
+          data: "09/01/2027",
+        }),
+        passoDeTexto("Vou corrigir a data."),
+      ],
+    });
+
+    await expect(resposta(modelo)).rejects.toThrow(
+      "verificar_disponibilidade falhou com ENTRADA_INVALIDA",
+    );
+  });
+});
 
 describe("enviarMensagem", () => {
   it("oferece ao modelo exatamente as cinco ferramentas do catálogo, sem nenhuma de confirmar", async () => {
@@ -181,10 +447,11 @@ describe("enviarMensagem", () => {
   it("devolve ao modelo, como ENTRADA_INVALIDA do catálogo, uma chamada com entrada inválida", async () => {
     const modelo = new MockLanguageModelV4({
       doStream: [
-        passoDeFerramenta("verificar_disponibilidade", {
-          pacote: "gramado-serra-azul-3n",
-          data: "09/01/2027",
-        }),
+        passoDeFerramenta(
+          "verificar_disponibilidade",
+          { pacote: "gramado-serra-azul-3n", data: "09/01/2027" },
+          { falha: "ENTRADA_INVALIDA" },
+        ),
         passoDeTexto("Vou corrigir a data."),
       ],
     });
@@ -265,7 +532,11 @@ async function resposta(
 ): Promise<UIMessage> {
   const stream = await abrirStream(modelo, mensagem);
   let ultima: UIMessage | undefined;
-  for await (const m of readUIMessageStream({ stream })) ultima = m;
+  for await (const m of readUIMessageStream({
+    stream,
+    terminateOnError: true,
+  }))
+    ultima = m;
   if (!ultima) throw new Error("O stream não montou nenhuma mensagem");
   return ultima;
 }
@@ -374,11 +645,11 @@ describe("cardsDaResposta", () => {
   it("não faz card de uma chamada que falhou nem de verificar_disponibilidade", async () => {
     const modelo = new MockLanguageModelV4({
       doStream: [
-        passoDeFerramenta("consultar_preco", {
-          pacote: "gramado-serra-azul-3n",
-          data: "09/01/2027",
-          grupo: casal,
-        }),
+        passoDeFerramenta(
+          "consultar_preco",
+          { pacote: "gramado-serra-azul-3n", data: "09/01/2027", grupo: casal },
+          { falha: "ENTRADA_INVALIDA" },
+        ),
         passoDeFerramenta("verificar_disponibilidade", {
           pacote: "gramado-serra-azul-3n",
           data: "2027-01-09",
@@ -396,10 +667,11 @@ describe("chamadasDaResposta", () => {
     const modelo = new MockLanguageModelV4({
       doStream: [
         passoDeFerramenta("buscar_pacotes", buscaDeJaneiro),
-        passoDeFerramenta("verificar_disponibilidade", {
-          pacote: "gramado-serra-azul-3n",
-          data: "09/01/2027",
-        }),
+        passoDeFerramenta(
+          "verificar_disponibilidade",
+          { pacote: "gramado-serra-azul-3n", data: "09/01/2027" },
+          { falha: "ENTRADA_INVALIDA" },
+        ),
         passoDeTexto("Pronto."),
       ],
     });
@@ -468,7 +740,7 @@ describe("buscar_politicas no chat", () => {
     const amigavel =
       "Não consegui consultar as políticas agora, tente de novo em instantes.";
     const semEmbedding = criarCatalogo({
-      ...buscaNosTextosDeTeste(),
+      ...textosDeTeste(),
       embedarPergunta: async () => {
         throw new Error("429 Too Many Requests");
       },
@@ -477,12 +749,16 @@ describe("buscar_politicas no chat", () => {
     });
     const modelo = new MockLanguageModelV4({
       doStream: [
-        passoDeFerramenta("buscar_politicas", { pergunta: "posso cancelar?" }),
+        passoDeFerramenta(
+          "buscar_politicas",
+          { pergunta: "posso cancelar?" },
+          { falha: "BUSCA_INDISPONIVEL" },
+        ),
         passoDeFerramenta("buscar_pacotes", buscaDeJaneiro),
         passoDeTexto(amigavel),
       ],
     });
-    const assistente = criarAssistente({
+    const assistente = criarAssistenteDeTeste({
       modelo,
       catalogo: semEmbedding,
       conversas: criarBaseDeConversasEmMemoria(),
@@ -495,7 +771,10 @@ describe("buscar_politicas no chat", () => {
     });
     if (!envio.ok) throw new Error(envio.erro);
     let mensagem: UIMessage | undefined;
-    for await (const m of readUIMessageStream({ stream: envio.stream })) {
+    for await (const m of readUIMessageStream({
+      stream: envio.stream,
+      terminateOnError: true,
+    })) {
       mensagem = m;
     }
     if (!mensagem) throw new Error("O stream não montou nenhuma mensagem");
@@ -850,7 +1129,11 @@ describe("Conversa salva", () => {
     const assistente = assistenteCom(
       new MockLanguageModelV4({
         doStream: [
-          passoDeFerramenta("ferramenta_que_nao_existe", {}),
+          passoDeFerramenta(
+            "ferramenta_que_nao_existe",
+            {},
+            { falha: "ERRO_DO_SDK" },
+          ),
           passoDeTexto("Vou tentar de outro jeito."),
         ],
       }),
@@ -957,7 +1240,7 @@ describe("lista de Conversas", () => {
     const modelo = new MockLanguageModelV4({
       doStream: async () => passoDeTexto("Olá!"),
     });
-    const assistente = criarAssistente({
+    const assistente = criarAssistenteDeTeste({
       modelo,
       catalogo,
       conversas: criarBaseDeConversasEmMemoria(),
@@ -1096,7 +1379,7 @@ describe("Proposta", () => {
   function assistenteComPropostas(...propostas: (typeof gramado)[]) {
     const tempo = relogioQueAnda("2026-12-01T09:00:00-03:00");
     const catalogoNovo = criarCatalogo({
-      ...buscaNosTextosDeTeste(),
+      ...textosDeTeste(),
       base: criarBaseEmMemoria(catalogoDeTeste),
       relogio: tempo.relogio,
     });
@@ -1109,7 +1392,7 @@ describe("Proposta", () => {
           : passoDeTexto("Certo.");
       },
     });
-    const assistente = criarAssistente({
+    const assistente = criarAssistenteDeTeste({
       modelo,
       catalogo: catalogoNovo,
       conversas: criarBaseDeConversasEmMemoria(),
