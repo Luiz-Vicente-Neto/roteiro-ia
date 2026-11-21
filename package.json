@@ -21,7 +21,8 @@
     "db:setup": "tsx scripts/db-setup.ts",
     "db:reset": "pnpm db:up && tsx scripts/db-reset.ts",
     "db:generate": "drizzle-kit generate",
-    "embeddings:gravar": "tsx scripts/embeddings-gravar.ts"
+    "embeddings:gravar": "tsx scripts/embeddings-gravar.ts",
+    "trechos:buscar": "tsx scripts/trechos-buscar.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.102",

@@ -26,6 +26,7 @@ export { semente } from "./semente";
 export type * from "./tipos";
 export { vagasDoGrupo } from "./vagas";
 export {
+  baseDosVetoresGravados,
   gravarVetores,
   indexarTrechos,
   lerVetoresGravados,

@@ -241,6 +241,63 @@ export function criarCatalogo({
     return { ok: true as const, catalogo, cotacao };
   }
 
+  /**
+   * The hybrid search of buscar_politicas before the cut: both halves and
+   * their fusion, or why the search by meaning did not run (then no fusion).
+   */
+  async function buscarNasPoliticas(bruta: EntradaBuscarPoliticas) {
+    const validacao = validar(entradaBuscarPoliticas, bruta);
+    if (!validacao.ok) return validacao;
+    const { pergunta } = validacao.valor;
+    const escopada = await escopoDasPoliticas(
+      () => base.lerCatalogo(),
+      validacao.valor,
+    );
+    if (!escopada.ok) return escopada;
+    const { escopo } = escopada;
+    // The word search overlaps the embedding.
+    const palavras = trechos.buscarPorPalavras(
+      pergunta,
+      CANDIDATOS_POR_BUSCA,
+      escopo,
+    );
+    const embedado = await embedarPergunta(pergunta).then(
+      (vetor) => ({ ok: true as const, vetor }),
+      (erro: unknown) => ({
+        ok: false as const,
+        motivo: erro instanceof Error ? erro.message : String(erro),
+      }),
+    );
+    const [porSentido, porPalavras] = await Promise.all([
+      embedado.ok
+        ? trechos
+            .buscarPorSentido(embedado.vetor, CANDIDATOS_POR_BUSCA, escopo)
+            .then((achados) => ({ ok: true as const, trechos: achados }))
+        : embedado,
+      palavras,
+    ]);
+    return {
+      ok: true as const,
+      porSentido,
+      porPalavras,
+      // The cut comes after the fusion, so a Trecho only one search finds
+      // still competes for the first places.
+      fundidos: porSentido.ok
+        ? fundirPorPosicao([porSentido.trechos, porPalavras])
+        : undefined,
+    };
+  }
+
+  /**
+   * What buscar_politicas sees before it keeps the first Trechos, for
+   * `pnpm trechos:buscar`. Never a tool: the model gets only the cut.
+   */
+  async function rankingDasPoliticas(bruta: EntradaBuscarPoliticas) {
+    const buscadas = await buscarNasPoliticas(bruta);
+    if (!buscadas.ok) return buscadas;
+    return { ...buscadas, devolvidos: TRECHOS_POR_BUSCA };
+  }
+
   const operacoes = {
     async buscarPacotes(bruta: EntradaBuscarPacotes) {
       const validacao = validar(entradaBuscarPacotes, bruta);
@@ -268,43 +325,15 @@ export function criarCatalogo({
     },
 
     async buscarPoliticas(bruta: EntradaBuscarPoliticas) {
-      const validacao = validar(entradaBuscarPoliticas, bruta);
-      if (!validacao.ok) return validacao;
-      const { pergunta } = validacao.valor;
-      const escopada = await escopoDasPoliticas(
-        () => base.lerCatalogo(),
-        validacao.valor,
-      );
-      if (!escopada.ok) return escopada;
-      const { escopo } = escopada;
+      const buscadas = await buscarNasPoliticas(bruta);
+      if (!buscadas.ok) return buscadas;
       // A failed embedding (quota, network, key) is a refusal, not a bug.
       // There is no falling back to the words alone: a worse answer with no
       // warning is what the Viajante must never get.
-      // The word search still overlaps the embedding; its result is dropped
-      // when the embedding fails.
-      const palavras = trechos.buscarPorPalavras(
-        pergunta,
-        CANDIDATOS_POR_BUSCA,
-        escopo,
-      );
-      const vetor = await embedarPergunta(pergunta).catch(() => undefined);
-      if (!vetor) {
-        palavras.catch(() => {});
-        return buscaIndisponivel();
-      }
-      const [porSentido, porPalavras] = await Promise.all([
-        trechos.buscarPorSentido(vetor, CANDIDATOS_POR_BUSCA, escopo),
-        palavras,
-      ]);
-      // The cut comes after the fusion, so a Trecho only one search finds
-      // still competes for the first places.
-      const encontrados = fundirPorPosicao([porSentido, porPalavras]).slice(
-        0,
-        TRECHOS_POR_BUSCA,
-      );
+      if (!buscadas.fundidos) return buscaIndisponivel();
       return {
         ok: true as const,
-        trechos: encontrados.map(
+        trechos: buscadas.fundidos.slice(0, TRECHOS_POR_BUSCA).map(
           (t): TrechoDaBusca => ({
             id: t.id,
             tituloDoDocumento: t.documento.titulo,
@@ -500,6 +529,7 @@ export function criarCatalogo({
     ...operacoes,
     confirmarPreReserva,
     situacaoDaProposta,
+    rankingDasPoliticas,
     ferramentas: criarFerramentas(operacoes),
   };
 }

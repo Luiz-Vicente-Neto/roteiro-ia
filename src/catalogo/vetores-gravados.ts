@@ -5,7 +5,9 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import {
+  type BaseDeTrechos,
   conferirVetores,
+  criarBaseDeTrechosEmMemoria,
   type IndiceDosTrechos,
   type TrechoIndexado,
 } from "./base-de-trechos";
@@ -95,4 +97,45 @@ export async function indexarTrechos({
   }));
   conferirVetores(indice, indexados);
   return indexados;
+}
+
+/**
+ * An in-memory Base de Trechos from whatever was recorded, never embedding,
+ * for `pnpm trechos:buscar`. A Trecho whose text changed since the recording
+ * keeps its old vector and is listed in `desatualizados`; one never recorded
+ * is found only by words and is listed in `semVetor`.
+ */
+export function baseDosVetoresGravados(
+  trechos: Trecho[],
+  gravados: VetoresGravados,
+): {
+  base: BaseDeTrechos;
+  indice: IndiceDosTrechos;
+  desatualizados: string[];
+  semVetor: string[];
+} {
+  const indice = { modelo: gravados.modelo, dimensoes: gravados.dimensoes };
+  const comVetor = trechos.flatMap((trecho) => {
+    const gravado = gravados.trechos[trecho.id];
+    return gravado ? [{ ...trecho, vetor: gravado.vetor }] : [];
+  });
+  const porSentido = criarBaseDeTrechosEmMemoria(indice, comVetor);
+  // The word search never reads a vector: a blank one lets every Trecho in.
+  const vazio = Array<number>(indice.dimensoes).fill(0);
+  const porPalavras = criarBaseDeTrechosEmMemoria(
+    indice,
+    trechos.map((trecho) => ({ ...trecho, vetor: vazio })),
+  );
+  return {
+    base: {
+      buscarPorSentido: porSentido.buscarPorSentido,
+      buscarPorPalavras: porPalavras.buscarPorPalavras,
+      lerIndice: porPalavras.lerIndice,
+    },
+    indice,
+    desatualizados: comVetor
+      .filter((t) => gravados.trechos[t.id].hash !== t.hash)
+      .map((t) => t.id),
+    semVetor: trechos.filter((t) => !gravados.trechos[t.id]).map((t) => t.id),
+  };
 }
