@@ -8,6 +8,7 @@ export {
   eventosDe,
   type LimiteAtingido,
   mensagensDe,
+  oQueOModeloRecebe,
   propostaInexistente,
 } from "./assistente";
 export {

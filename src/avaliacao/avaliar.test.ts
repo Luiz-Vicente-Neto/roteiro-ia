@@ -1,3 +1,4 @@
+import { APICallError } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import { describe, expect, it } from "vitest";
 import {
@@ -44,6 +45,20 @@ function cotarGramado(data: string): RespostaRoteirizada {
   });
 }
 
+/**
+ * The provider's 429 when the day's quota is over. Not retryable here, so
+ * the SDK does not back off for seconds in the test.
+ */
+function cotaEsgotada({ isRetryable = false } = {}) {
+  return new APICallError({
+    message: "Resource has been exhausted (e.g. check quota).",
+    url: "https://provedor.falso/v1/modelo",
+    requestBodyValues: {},
+    statusCode: 429,
+    isRetryable,
+  });
+}
+
 /** A fake juiz that answers `resposta` to every question, recording each one. */
 function juizQueResponde(resposta: string) {
   return new MockLanguageModelV4({
@@ -72,8 +87,9 @@ async function avaliarComRoteiro(
   roteiros: Record<string, RespostaRoteirizada[]>,
   casos: Caso[] = [gramadoEmJulho],
   juiz: MockLanguageModelV4 = juizQueResponde("sim"),
+  guardados: ResultadoDoCaso[] = [],
 ) {
-  const gravados: ResultadoDoCaso[] = [];
+  const resultados = resultadosEmMemoria(guardados);
   const relatorio = await avaliar({
     juiz,
     casos: { agora: AGORA, lista: casos },
@@ -87,15 +103,26 @@ async function avaliarComRoteiro(
       // Only questions in PERGUNTAS_GRAVADAS: any other throws.
       embedarPergunta: embedarPerguntaGravada,
     },
-    resultados: {
-      gravar: async (resultado) => {
-        gravados.push(resultado);
-      },
-    },
+    resultados,
+    rpm: 5,
     esperar: async () => {},
     relogio: relogioFixo("2026-11-23T10:00:00-03:00"),
   });
-  return { relatorio, gravados };
+  return { relatorio, gravados: resultados.gravados };
+}
+
+/** Results kept in memory, starting with `guardados`; `gravados` lists what this run wrote. */
+function resultadosEmMemoria(guardados: ResultadoDoCaso[] = []) {
+  const todos = [...guardados];
+  const gravados: ResultadoDoCaso[] = [];
+  return {
+    gravados,
+    ler: async () => [...todos],
+    gravar: async (resultado: ResultadoDoCaso) => {
+      gravados.push(resultado);
+      todos.push(resultado);
+    },
+  };
 }
 
 describe("avaliar", () => {
@@ -683,44 +710,327 @@ describe("avaliar", () => {
         valoresInventados: [],
         citacoesInvalidas: [],
         injectionObedecida: null,
+        impressaoDigital: expect.stringMatching(/^[0-9a-f]{64}$/),
       },
     ]);
   });
 
-  it("espera antes de cada chamada ao modelo, menos a primeira, contando os passos de Ferramenta", async () => {
+  it("espera 60/RPM segundos antes de cada chamada ao modelo, menos a primeira, contando os passos de Ferramenta e o juiz", async () => {
     const modelos: MockLanguageModelV4[] = [];
-    const chamadasAntesDeCadaEspera: number[] = [];
+    const juiz = juizQueResponde("sim");
     const chamadas = () =>
-      modelos.reduce((soma, m) => soma + m.doStreamCalls.length, 0);
+      modelos.reduce((soma, m) => soma + m.doStreamCalls.length, 0) +
+      juiz.doGenerateCalls.length;
+    const esperas: { ms: number; chamadasAntes: number }[] = [];
+    const recusa: Caso = {
+      id: "fora-do-escopo-poema",
+      categoria: "fora-do-escopo",
+      mensagem: "Escreva um poema sobre o mar.",
+    };
     await avaliar({
-      juiz: juizQueResponde("sim"),
-      casos: {
-        agora: AGORA,
-        lista: [gramadoEmJulho, { ...gramadoEmJulho, id: "outro" }],
-      },
+      juiz,
+      casos: { agora: AGORA, lista: [gramadoEmJulho, recusa] },
       modelo: {
         nome: "falso:roteirizado",
-        para: () => {
+        para: (caso) => {
           const modelo = new MockLanguageModelV4({
-            doStream: [
-              cotarGramado("2027-07-10"),
-              passoDeTexto("Veja o card."),
-            ],
+            doStream:
+              caso.id === recusa.id
+                ? [passoDeTexto("Só ajudo com viagens.")]
+                : [cotarGramado("2027-07-10"), passoDeTexto("Veja o card.")],
           });
           modelos.push(modelo);
           return modelo;
         },
       },
       embeddings: { indice: INDICE_GRAVADO, embedarPergunta: async () => [] },
-      resultados: { gravar: async () => {} },
-      esperar: async () => {
-        chamadasAntesDeCadaEspera.push(chamadas());
+      resultados: resultadosEmMemoria(),
+      rpm: 6,
+      esperar: async (ms) => {
+        esperas.push({ ms, chamadasAntes: chamadas() });
       },
       relogio: relogioFixo(AGORA),
     });
 
-    // Two Casos of two model calls each: a wait before calls 2, 3 and 4.
-    expect(chamadasAntesDeCadaEspera).toEqual([1, 2, 3]);
+    // Two model calls for the price Caso, one for the refusal and one to the
+    // juiz: a 10 s wait (6 per minute) before calls 2, 3 and 4.
+    expect(esperas).toEqual([
+      { ms: 10_000, chamadasAntes: 1 },
+      { ms: 10_000, chamadasAntes: 2 },
+      { ms: 10_000, chamadasAntes: 3 },
+    ]);
+  });
+
+  describe("cota do provedor esgotada (429)", () => {
+    const segundo: Caso = { ...gramadoEmJulho, id: "segundo" };
+    const terceiro: Caso = { ...gramadoEmJulho, id: "terceiro" };
+
+    it('para a rodada: os Casos restantes ficam "não rodou" e o Relatório fica incompleto, sem reprovar', async () => {
+      const doTerceiro = new MockLanguageModelV4({ doStream: [] });
+      const resultados = resultadosEmMemoria();
+      const relatorio = await avaliar({
+        juiz: juizQueResponde("sim"),
+        casos: { agora: AGORA, lista: [gramadoEmJulho, segundo, terceiro] },
+        modelo: {
+          nome: "falso:roteirizado",
+          para: (caso) => {
+            if (caso.id === segundo.id) {
+              return new MockLanguageModelV4({
+                doStream: async () => {
+                  throw cotaEsgotada();
+                },
+              });
+            }
+            if (caso.id === terceiro.id) return doTerceiro;
+            return new MockLanguageModelV4({
+              doStream: [
+                cotarGramado("2027-07-10"),
+                passoDeTexto("Veja o card."),
+              ],
+            });
+          },
+        },
+        embeddings: { indice: INDICE_GRAVADO, embedarPergunta: async () => [] },
+        resultados,
+        rpm: 5,
+        esperar: async () => {},
+        relogio: relogioFixo(AGORA),
+      });
+
+      expect(resultados.gravados.map((r) => r.caso)).toEqual([
+        "preco-gramado-julho",
+      ]);
+      expect(doTerceiro.doStreamCalls).toHaveLength(0);
+      expect(relatorio.incompleta).toBe(true);
+      expect(relatorio.naoRodaram).toEqual(["segundo", "terceiro"]);
+      expect(relatorio.aprovada).toBe(true);
+      expect(relatorio.reprovados).toEqual([]);
+      expect(relatorio.categorias).toEqual([
+        expect.objectContaining({ categoria: "preco", acertos: 1, total: 1 }),
+      ]);
+    });
+
+    it("para também quando o 429 vem do juiz", async () => {
+      const recusa: Caso = {
+        id: "fora-do-escopo-poema",
+        categoria: "fora-do-escopo",
+        mensagem: "Escreva um poema sobre o mar.",
+      };
+      const juiz = new MockLanguageModelV4({
+        doGenerate: async () => {
+          throw cotaEsgotada();
+        },
+      });
+      const { relatorio, gravados } = await avaliarComRoteiro(
+        {
+          [recusa.id]: [passoDeTexto("Só ajudo com viagens.")],
+          [segundo.id]: [passoDeTexto("Não consegui cotar.")],
+        },
+        [recusa, segundo],
+        juiz,
+      );
+
+      expect(gravados).toEqual([]);
+      expect(relatorio.naoRodaram).toEqual(["fora-do-escopo-poema", "segundo"]);
+      expect(relatorio.incompleta).toBe(true);
+      expect(relatorio.reprovados).toEqual([]);
+    });
+
+    it("segue quando a nova tentativa do SDK depois de um 429 dá certo", async () => {
+      let tentativas = 0;
+      const resultados = resultadosEmMemoria();
+      const relatorio = await avaliar({
+        juiz: juizQueResponde("sim"),
+        casos: { agora: AGORA, lista: [gramadoEmJulho, segundo] },
+        modelo: {
+          nome: "falso:roteirizado",
+          para: (caso) => {
+            if (caso.id !== gramadoEmJulho.id) {
+              return new MockLanguageModelV4({
+                doStream: [passoDeTexto("Não consegui cotar.")],
+              });
+            }
+            const passos = [
+              cotarGramado("2027-07-10"),
+              passoDeTexto("Veja o card."),
+            ];
+            return new MockLanguageModelV4({
+              doStream: async () => {
+                // The first attempt hits a per-minute 429; the SDK's retry works.
+                if (tentativas++ === 0)
+                  throw cotaEsgotada({ isRetryable: true });
+                return passos.shift() ?? passoDeTexto("");
+              },
+            });
+          },
+        },
+        embeddings: { indice: INDICE_GRAVADO, embedarPergunta: async () => [] },
+        resultados,
+        rpm: 5,
+        esperar: async () => {},
+        relogio: relogioFixo(AGORA),
+      });
+
+      expect(relatorio.incompleta).toBe(false);
+      expect(resultados.gravados.map((r) => [r.caso, r.aprovado])).toEqual([
+        ["preco-gramado-julho", true],
+        ["segundo", false],
+      ]);
+    }, 15_000);
+
+    it("para quando o 429 vem do embedding da pergunta", async () => {
+      const citacao: Caso = {
+        id: "citacao-cancelamento",
+        categoria: "citacao",
+        mensagem: "Posso cancelar?",
+        esperado: { trechos: ["politica-da-agencia#cancelamento"] },
+      };
+      const resultados = resultadosEmMemoria();
+      const relatorio = await avaliar({
+        juiz: juizQueResponde("sim"),
+        casos: { agora: AGORA, lista: [citacao] },
+        modelo: {
+          nome: "falso:roteirizado",
+          para: () =>
+            new MockLanguageModelV4({
+              doStream: [
+                passoDeChamada("buscar_politicas", {
+                  pergunta: "Posso cancelar?",
+                }),
+                passoDeTexto("Não consegui buscar."),
+              ],
+            }),
+        },
+        embeddings: {
+          indice: INDICE_GRAVADO,
+          embedarPergunta: async () => {
+            throw cotaEsgotada();
+          },
+        },
+        resultados,
+        rpm: 5,
+        esperar: async () => {},
+        relogio: relogioFixo(AGORA),
+      });
+
+      expect(resultados.gravados).toEqual([]);
+      expect(relatorio.naoRodaram).toEqual(["citacao-cancelamento"]);
+    });
+
+    it("um Relatório completo não se declara incompleto", async () => {
+      const { relatorio } = await avaliarComRoteiro({
+        [gramadoEmJulho.id]: [passoDeTexto("Não consegui cotar.")],
+      });
+
+      expect(relatorio.incompleta).toBe(false);
+      expect(relatorio.naoRodaram).toEqual([]);
+    });
+  });
+
+  describe("retomada", () => {
+    const outroCaso: Caso = { ...gramadoEmJulho, id: "outro" };
+    const roteiro = () => [
+      cotarGramado("2027-07-10"),
+      passoDeTexto("Veja o card."),
+    ];
+
+    /** Runs `lista` over the results in `resultados`, counting the model's calls per Caso. */
+    async function rodar(
+      lista: Caso[],
+      resultados: ReturnType<typeof resultadosEmMemoria>,
+      { nome = "falso:roteirizado", hora = "2026-11-23T10:00:00-03:00" } = {},
+    ) {
+      const chamados: string[] = [];
+      const relatorio = await avaliar({
+        juiz: juizQueResponde("sim"),
+        casos: { agora: AGORA, lista },
+        modelo: {
+          nome,
+          para: (caso) => {
+            chamados.push(caso.id);
+            return new MockLanguageModelV4({ doStream: roteiro() });
+          },
+        },
+        embeddings: { indice: INDICE_GRAVADO, embedarPergunta: async () => [] },
+        resultados,
+        rpm: 5,
+        esperar: async () => {},
+        relogio: relogioFixo(hora),
+      });
+      return { relatorio, chamados };
+    }
+
+    it("não roda de novo um Caso com resultado de mesma impressão digital, e o Relatório o conta", async () => {
+      const resultados = resultadosEmMemoria();
+      await rodar([gramadoEmJulho], resultados);
+
+      const segunda = await rodar([gramadoEmJulho, outroCaso], resultados);
+
+      expect(segunda.chamados).toEqual(["outro"]);
+      expect(segunda.relatorio.categorias).toEqual([
+        expect.objectContaining({ categoria: "preco", acertos: 2, total: 2 }),
+      ]);
+    });
+
+    it("roda de novo quando o Caso muda", async () => {
+      const resultados = resultadosEmMemoria();
+      await rodar([gramadoEmJulho], resultados);
+
+      const segunda = await rodar(
+        [
+          {
+            ...gramadoEmJulho,
+            mensagem: `${gramadoEmJulho.mensagem} Obrigado!`,
+          },
+        ],
+        resultados,
+      );
+
+      expect(segunda.chamados).toEqual(["preco-gramado-julho"]);
+    });
+
+    it("roda de novo quando o modelo muda", async () => {
+      const resultados = resultadosEmMemoria();
+      await rodar([gramadoEmJulho], resultados);
+
+      const segunda = await rodar([gramadoEmJulho], resultados, {
+        nome: "falso:outro",
+      });
+
+      expect(segunda.chamados).toEqual(["preco-gramado-julho"]);
+      expect(segunda.relatorio.modelo).toBe("falso:outro");
+    });
+
+    it("roda de novo um Caso guardado com outra impressão digital, como a de outro prompt de sistema", async () => {
+      const resultados = resultadosEmMemoria();
+      await rodar([gramadoEmJulho], resultados);
+      const [guardado] = await resultados.ler();
+      const deOutroPrompt = resultadosEmMemoria([
+        { ...(guardado as ResultadoDoCaso), impressaoDigital: "outro-prompt" },
+      ]);
+
+      const segunda = await rodar([gramadoEmJulho], deOutroPrompt);
+
+      expect(segunda.chamados).toEqual(["preco-gramado-julho"]);
+    });
+
+    it("o Relatório mostra a data do resultado mais antigo usado", async () => {
+      const resultados = resultadosEmMemoria();
+      await rodar([gramadoEmJulho], resultados, {
+        hora: "2026-11-20T08:00:00-03:00",
+      });
+
+      const segunda = await rodar([gramadoEmJulho, outroCaso], resultados, {
+        hora: "2026-11-23T10:00:00-03:00",
+      });
+
+      expect(segunda.relatorio.resultadoMaisAntigo).toEqual(
+        new Date("2026-11-20T08:00:00-03:00"),
+      );
+      expect(segunda.relatorio.geradoEm).toEqual(
+        new Date("2026-11-23T10:00:00-03:00"),
+      );
+    });
   });
 
   it("recusa um modelo de embeddings diferente do dos vetores gravados, antes de chamar o modelo", async () => {
@@ -735,7 +1045,8 @@ describe("avaliar", () => {
           indice: { modelo: "openai:outro-modelo", dimensoes: 768 },
           embedarPergunta: async () => [],
         },
-        resultados: { gravar: async () => {} },
+        resultados: resultadosEmMemoria(),
+        rpm: 5,
         esperar: async () => {},
         relogio: relogioFixo(AGORA),
       }),

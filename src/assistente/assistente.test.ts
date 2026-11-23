@@ -28,6 +28,7 @@ import {
   criarBaseDeConversasEmMemoria,
   criarLimitadorEmMemoria,
   mensagensDe,
+  oQueOModeloRecebe,
   propostasDaResposta,
   type TextoDaResposta,
   textoDaResposta,
@@ -368,6 +369,31 @@ describe("helpers do modelo falso", () => {
 });
 
 describe("enviarMensagem", () => {
+  it("manda ao modelo o prompt de sistema e as Ferramentas que oQueOModeloRecebe descreve, que a Avaliação usa na impressão digital", async () => {
+    const modelo = new MockLanguageModelV4({
+      doStream: [passoDeTexto("Olá!")],
+    });
+    await enviar(modelo, "Oi");
+    const chamada = modelo.doStreamCalls[0];
+    const descrito = oQueOModeloRecebe(catalogo.ferramentas, relogio);
+
+    expect(chamada?.prompt[0]).toEqual({
+      role: "system",
+      content: descrito.instrucoes,
+    });
+    expect(
+      chamada?.tools?.map((t) =>
+        t.type === "function"
+          ? {
+              nome: t.name,
+              descricao: t.description,
+              schemaDeEntrada: t.inputSchema,
+            }
+          : t,
+      ),
+    ).toEqual(descrito.ferramentas);
+  });
+
   it("oferece ao modelo exatamente as cinco ferramentas do catálogo, sem nenhuma de confirmar", async () => {
     const modelo = new MockLanguageModelV4({ doStream: passoDeTexto("Olá!") });
 

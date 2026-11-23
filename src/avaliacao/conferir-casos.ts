@@ -30,7 +30,7 @@ type CasoDe<C extends Caso["categoria"]> = Extract<Caso, { categoria: C }>;
  */
 export async function conferirCasos(casos: Casos): Promise<string[]> {
   const { modelo, dimensoes } = lerVetoresGravados();
-  const novoCatalogo = await fabricaDeCatalogos({
+  const { novoCatalogo } = await fabricaDeCatalogos({
     embeddings: {
       indice: { modelo, dimensoes },
       embedarPergunta: async () => {

@@ -48,6 +48,11 @@ import { type EstadoDaProposta, propostasDaResposta } from "./resposta";
  */
 const PASSOS_DE_FERRAMENTA = 6;
 
+/** The JSON Schema of a Ferramenta's input, as the model reads it. */
+function schemaParaOModelo(f: Ferramenta) {
+  return z.toJSONSchema(f.schemaDeEntrada, { io: "input" });
+}
+
 /**
  * Adapts the catalog's ferramentas to the SDK's tool format. The JSON Schema
  * is sent to the model, but the SDK does not validate the input: `executar`
@@ -62,13 +67,31 @@ function paraToolsDoSdk(
       f.nome,
       {
         description: f.descricao,
-        inputSchema: jsonSchema(
-          z.toJSONSchema(f.schemaDeEntrada, { io: "input" }),
-        ),
+        inputSchema: jsonSchema(schemaParaOModelo(f)),
         execute: (entrada: unknown) => f.executar(entrada),
       } satisfies Tool,
     ]),
   );
+}
+
+/**
+ * The fixed part of what the Assistente sends the model on `relogio`'s day:
+ * the system prompt and each Ferramenta's name, description and input
+ * schema. The Avaliação fingerprints it, so a change to any of them runs
+ * the Casos again.
+ */
+export function oQueOModeloRecebe(
+  ferramentas: readonly Ferramenta[],
+  relogio: Relogio,
+) {
+  return {
+    instrucoes: instrucoes(relogio.hoje()),
+    ferramentas: ferramentas.map((f) => ({
+      nome: f.nome,
+      descricao: f.descricao,
+      schemaDeEntrada: schemaParaOModelo(f),
+    })),
+  };
 }
 
 /** How many words of the Viajante's first message make the Conversa's title. */

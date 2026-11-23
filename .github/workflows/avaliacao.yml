@@ -1,0 +1,95 @@
+name: Avaliação
+
+# Só manual: a Avaliação gasta a cota do provedor e não cabe em todo push
+# (docs/adr/0007). O CI de sempre não chama o modelo.
+on:
+  workflow_dispatch:
+    inputs:
+      modelo:
+        description: "Modelo, no formato provedor:modelo"
+        required: true
+        default: google:gemini-3.8-flash
+      categoria:
+        description: "Só uma categoria, ou todas"
+        type: choice
+        default: todas
+        options:
+          - todas
+          - preco
+          - citacao
+          - injection
+          - nao-sei
+          - fora-do-escopo
+
+permissions:
+  contents: read
+
+# Duas rodadas ao mesmo tempo dividiriam a mesma cota por minuto.
+concurrency:
+  group: avaliacao
+  cancel-in-progress: false
+
+jobs:
+  avaliar:
+    name: Avaliação do Assistente
+    runs-on: ubuntu-latest
+    # Uma chamada a cada 12 s: 40 Casos levam perto de meia hora.
+    timeout-minutes: 90
+
+    env:
+      MODELO: ${{ inputs.modelo }}
+      # Só a chave do provedor escolhido precisa existir como secret.
+      GOOGLE_GENERATIVE_AI_API_KEY: ${{ secrets.GOOGLE_GENERATIVE_AI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Os resultados da última rodada, para retomar de onde ela parou: um
+      # Caso com a mesma impressão digital não roda de novo.
+      - name: Resultados das rodadas anteriores
+        uses: actions/cache/restore@v6
+        with:
+          path: .avaliacao/resultados.jsonl
+          key: avaliacao-${{ github.run_id }}
+          restore-keys: avaliacao-
+
+      - name: Avaliação
+        env:
+          CATEGORIA: ${{ inputs.categoria }}
+        run: |
+          if [ "$CATEGORIA" = "todas" ]; then
+            pnpm avaliacao
+          else
+            pnpm avaliacao --categoria "$CATEGORIA"
+          fi
+
+      # Também quando a Avaliação reprova: os resultados continuam valendo.
+      - name: Guardar os resultados para a próxima rodada
+        if: always() && hashFiles('.avaliacao/resultados.jsonl') != ''
+        uses: actions/cache/save@v6
+        with:
+          path: .avaliacao/resultados.jsonl
+          key: avaliacao-${{ github.run_id }}
+
+      - name: Tabela no resumo do job
+        if: always() && hashFiles('.avaliacao/relatorio.md') != ''
+        run: cat .avaliacao/relatorio.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Relatório como artefato
+        if: always() && hashFiles('.avaliacao/relatorio.md') != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: relatorio-da-avaliacao
+          path: .avaliacao/relatorio.md

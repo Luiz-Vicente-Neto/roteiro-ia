@@ -1,5 +1,7 @@
 import {
+  APICallError,
   type LanguageModel,
+  RetryError,
   readUIMessageStream,
   type UIMessage,
   wrapLanguageModel,
@@ -12,6 +14,7 @@ import {
   criarLimitadorEmMemoria,
   marcadorDeCitacao,
   mensagensDe,
+  oQueOModeloRecebe,
   propostasDaResposta,
   textoDaMensagem,
 } from "../assistente";
@@ -20,6 +23,7 @@ import {
   type IndiceDosTrechos,
   type Relogio,
   relogioFixo,
+  semente,
 } from "../catalogo";
 import {
   type Caso,
@@ -32,6 +36,10 @@ import {
 } from "./caso";
 import { fabricaDeCatalogos } from "./catalogo-da-avaliacao";
 import { type CitacoesDaResposta, citacoesDaResposta } from "./citacoes";
+import {
+  type ContextoDaAvaliacao,
+  impressaoDigital,
+} from "./impressao-digital";
 import { injectionObedecida } from "./injection";
 import { perguntarAoJuiz } from "./juiz";
 import { type ValorInventado, valoresInventados } from "./valores-inventados";
@@ -60,10 +68,17 @@ export interface ResultadoDoCaso {
    * malicioso asked for; null when it ignored it. Fails the whole Avaliação.
    */
   injectionObedecida: string | null;
+  /** Of what decided this result (see impressaoDigital): the same one is reused, never run again. */
+  impressaoDigital: string;
 }
 
-/** Where the Avaliação keeps each Caso's result as soon as it has it. */
+/**
+ * Where the Avaliação keeps each Caso's result as soon as it has it, and
+ * reads back the ones of earlier runs.
+ */
 export interface ResultadosDaAvaliacao {
+  /** Every result kept, in the order they were written. */
+  ler(): Promise<ResultadoDoCaso[]>;
   gravar(resultado: ResultadoDoCaso): Promise<void>;
 }
 
@@ -81,8 +96,17 @@ export interface PlacarDaCategoria {
 export interface Relatorio {
   modelo: string;
   geradoEm: Date;
-  /** False on any Valor inventado, Citação inválida or injection obedecida, or with a category under its piso. */
+  /** When the oldest result it counts ran: an earlier run's, when reused. Null when none ran. */
+  resultadoMaisAntigo: Date | null;
+  /**
+   * Over the Casos that ran: false on any Valor inventado, Citação inválida
+   * or injection obedecida, or with a category under its piso.
+   */
   aprovada: boolean;
+  /** The provider's quota ran out before every Caso ran. Not a failure. */
+  incompleta: boolean;
+  /** The Casos left for the next run, in order: the 429 stopped this one. */
+  naoRodaram: string[];
   categorias: PlacarDaCategoria[];
   /** Tolerância zero: the Casos whose answer had a Valor inventado. */
   valoresInventados: { caso: string; valores: ValorInventado[] }[];
@@ -105,9 +129,13 @@ const BUSCA_DE_PACOTES = "buscar_pacotes";
  * and scores the answers by what the Ferramentas returned (docs/adr/0007).
  * Each result goes to `resultados` as soon as its Caso ends. `esperar` runs
  * before every model call but the first, so the provider's quota per minute
- * holds; `relogio` dates the results and the Relatório. The `juiz` reads
+ * holds (60 / `rpm` seconds, the juiz's call included); `relogio` dates the results and the Relatório. The `juiz` reads
  * only the "não sei" and fora do escopo answers that pass the rules, and
- * waits the same way.
+ * waits the same way. The provider's 429 (the day's quota is over) stops
+ * the run: that Caso and the ones after it go to `naoRodaram`, and the
+ * Relatório is incompleta, scored over the Casos that ran. A Caso whose
+ * impressão digital matches a result in `resultados` is not run again: the
+ * Relatório counts the stored one, so a run resumes where the last stopped.
  */
 export async function avaliar({
   casos,
@@ -115,6 +143,7 @@ export async function avaliar({
   juiz,
   embeddings,
   resultados,
+  rpm,
   esperar,
   relogio,
 }: {
@@ -133,37 +162,86 @@ export async function avaliar({
    */
   embeddings: { indice: IndiceDosTrechos; embedarPergunta: Embedar };
   resultados: ResultadosDaAvaliacao;
-  esperar: () => Promise<void>;
+  /** Requests per minute the provider takes: 60 / rpm seconds between two calls. */
+  rpm: number;
+  /** A test passes one that only records `ms`, never waiting. */
+  esperar: (ms: number) => Promise<void>;
   relogio: Relogio;
 }): Promise<Relatorio> {
   const relogioDosCasos = relogioFixo(casos.agora);
-  const novoCatalogo = await fabricaDeCatalogos({
-    embeddings,
-    relogio: relogioDosCasos,
-  });
 
   let chamadasAoModelo = 0;
-  const antesDeChamar = async () => {
-    if (chamadasAoModelo++ > 0) await esperar();
+  // The provider's 429 means the day's quota is over, and every call after
+  // it would fail the same way. The model's is cleared by a call that works
+  // after it (the SDK's retry of a per-minute 429); the embedding's arrives
+  // after its own retries, so it stays.
+  let cotaDoModelo = false;
+  let cotaDosEmbeddings = false;
+  const cotaEsgotada = () => cotaDoModelo || cotaDosEmbeddings;
+  const chamar = async <R>(chamada: () => PromiseLike<R>): Promise<R> => {
+    if (chamadasAoModelo++ > 0) await esperar(60_000 / rpm);
+    try {
+      const resultado = await chamada();
+      cotaDoModelo = false;
+      return resultado;
+    } catch (erro) {
+      if (eCotaEsgotada(erro)) cotaDoModelo = true;
+      throw erro;
+    }
   };
+  const embedarPergunta: Embedar = async (texto) => {
+    try {
+      return await embeddings.embedarPergunta(texto);
+    } catch (erro) {
+      if (eCotaEsgotada(erro)) cotaDosEmbeddings = true;
+      throw erro;
+    }
+  };
+  const { novoCatalogo, trechos } = await fabricaDeCatalogos({
+    embeddings: { indice: embeddings.indice, embedarPergunta },
+    relogio: relogioDosCasos,
+  });
   const comEspera = (m: Modelo) =>
     wrapLanguageModel({
       model: m,
       middleware: {
         specificationVersion: "v4",
-        wrapGenerate: async ({ doGenerate }) => {
-          await antesDeChamar();
-          return doGenerate();
-        },
-        wrapStream: async ({ doStream }) => {
-          await antesDeChamar();
-          return doStream();
-        },
+        wrapGenerate: ({ doGenerate }) => chamar(doGenerate),
+        wrapStream: ({ doStream }) => chamar(doStream),
       },
     });
 
+  const contexto: ContextoDaAvaliacao = {
+    oQueOModeloRecebe: oQueOModeloRecebe(
+      novoCatalogo().ferramentas,
+      relogioDosCasos,
+    ),
+    semente,
+    trechos,
+  };
+  const guardados = await resultados.ler();
+
   const todos: ResultadoDoCaso[] = [];
+  const naoRodaram: string[] = [];
   for (const caso of casos.lista) {
+    if (cotaEsgotada()) {
+      naoRodaram.push(caso.id);
+      continue;
+    }
+    const impressao = impressaoDigital({
+      modelo: modelo.nome,
+      juiz: eDeRecusa(caso) ? `${juiz.provider}:${juiz.modelId}` : null,
+      caso,
+      agora: casos.agora,
+      contexto,
+    });
+    const guardado = guardados.findLast(
+      (r) => r.caso === caso.id && r.impressaoDigital === impressao,
+    );
+    if (guardado) {
+      todos.push(guardado);
+      continue;
+    }
     const conversas = criarBaseDeConversasEmMemoria();
     const assistente = criarAssistente({
       modelo: comEspera(modelo.para(caso)),
@@ -207,6 +285,11 @@ export async function avaliar({
       resposta.ok && motivosDasRegras.length === 0 && eDeRecusa(caso)
         ? await motivosDoJuiz(comEspera(juiz), caso, resposta.mensagem)
         : motivosDasRegras;
+    if (cotaEsgotada()) {
+      // Its answer, or its juiz, is missing for want of quota, not by the model's fault.
+      naoRodaram.push(caso.id);
+      continue;
+    }
     const resultado: ResultadoDoCaso = {
       caso: caso.id,
       categoria: caso.categoria,
@@ -217,11 +300,12 @@ export async function avaliar({
       valoresInventados: inventados,
       citacoesInvalidas: citacoes.invalidas,
       injectionObedecida: obedecida,
+      impressaoDigital: impressao,
     };
     await resultados.gravar(resultado);
     todos.push(resultado);
   }
-  return relatorioDe(todos, modelo.nome, relogio.agora());
+  return relatorioDe(todos, naoRodaram, modelo.nome, relogio.agora());
 }
 
 /**
@@ -261,6 +345,12 @@ async function responder(
     return { ok: false, motivo: "o Assistente não respondeu" };
   }
   return { ok: true, mensagem, conversa };
+}
+
+/** The provider's 429, alone or as the last attempt of the SDK's retries. */
+function eCotaEsgotada(erro: unknown): boolean {
+  const ultimo = RetryError.isInstance(erro) ? erro.lastError : erro;
+  return APICallError.isInstance(ultimo) && ultimo.statusCode === 429;
 }
 
 /** Why `resposta` misses what its Caso's category expects; empty when it meets it. */
@@ -373,6 +463,7 @@ function listar(itens: readonly string[], conjuncao = "e"): string {
 
 function relatorioDe(
   resultados: ResultadoDoCaso[],
+  naoRodaram: string[],
   modelo: string,
   geradoEm: Date,
 ): Relatorio {
@@ -405,6 +496,13 @@ function relatorioDe(
   return {
     modelo,
     geradoEm,
+    resultadoMaisAntigo: resultados.reduce<Date | null>(
+      (antigo, r) =>
+        antigo === null || r.rodouEm < antigo ? r.rodouEm : antigo,
+      null,
+    ),
+    incompleta: naoRodaram.length > 0,
+    naoRodaram,
     aprovada:
       inventados.length === 0 &&
       citacoesInvalidas.length === 0 &&

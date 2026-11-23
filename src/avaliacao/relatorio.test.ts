@@ -5,7 +5,10 @@ import { relatorioEmMarkdown } from "./relatorio";
 const base: Relatorio = {
   modelo: "google:gemini-3.8-flash",
   geradoEm: new Date("2026-11-23T13:00:00Z"),
+  resultadoMaisAntigo: new Date("2026-11-23T12:00:00Z"),
   aprovada: true,
+  incompleta: false,
+  naoRodaram: [],
   categorias: [
     {
       categoria: "preco",
@@ -47,6 +50,51 @@ describe("relatorioEmMarkdown", () => {
         "",
       ].join("\n"),
     );
+  });
+
+  it("mostra a data do resultado mais antigo quando é de outro dia", () => {
+    const markdown = relatorioEmMarkdown({
+      ...base,
+      resultadoMaisAntigo: new Date("2026-11-20T13:00:00Z"),
+    });
+
+    expect(markdown).toContain(
+      "**Aprovada.** Modelo `google:gemini-3.8-flash`, em 23/11/2026, com resultados desde 20/11/2026.",
+    );
+  });
+
+  it("se declara incompleta, sem reprovar, e lista os Casos que não rodaram", () => {
+    const markdown = relatorioEmMarkdown({
+      ...base,
+      incompleta: true,
+      naoRodaram: ["citacao-pets", "nao-sei-cambio"],
+    });
+
+    expect(markdown).toContain("**Incompleta.**");
+    expect(markdown).not.toContain("Reprovada");
+    expect(markdown).toContain(
+      [
+        "## Não rodaram",
+        "",
+        "A cota do provedor acabou antes destes Casos. O placar conta só os que rodaram; rode de novo para continuar de onde parou.",
+        "",
+        "- `citacao-pets`",
+        "- `nao-sei-cambio`",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("uma falha nos Casos que rodaram reprova mesmo incompleta", () => {
+    const markdown = relatorioEmMarkdown({
+      ...base,
+      aprovada: false,
+      incompleta: true,
+      naoRodaram: ["citacao-pets"],
+    });
+
+    expect(markdown).toContain("**Reprovada.**");
+    expect(markdown).toContain("## Não rodaram");
   });
 
   it("aponta cada Valor inventado e a categoria abaixo do piso", () => {

@@ -16,11 +16,21 @@ const DATA = new Intl.DateTimeFormat("pt-BR", {
 
 /** The Relatório as Markdown: the table goes to the README as is. */
 export function relatorioEmMarkdown(relatorio: Relatorio): string {
-  const veredito = relatorio.aprovada ? "**Aprovada.**" : "**Reprovada.**";
+  // Running out of quota is not a failure: incompleta only when nothing that ran failed.
+  const veredito = !relatorio.aprovada
+    ? "**Reprovada.**"
+    : relatorio.incompleta
+      ? "**Incompleta.**"
+      : "**Aprovada.**";
+  const em = DATA.format(relatorio.geradoEm);
+  const desde =
+    relatorio.resultadoMaisAntigo === null
+      ? em
+      : DATA.format(relatorio.resultadoMaisAntigo);
   const linhas = [
     "# Avaliação do Assistente",
     "",
-    `${veredito} Modelo \`${relatorio.modelo}\`, em ${DATA.format(relatorio.geradoEm)}.`,
+    `${veredito} Modelo \`${relatorio.modelo}\`, em ${em}${desde === em ? "" : `, com resultados desde ${desde}`}.`,
     "",
     "| Categoria | Acertos | Total | % | Piso |",
     "| --- | --: | --: | --: | --: |",
@@ -32,6 +42,16 @@ export function relatorioEmMarkdown(relatorio: Relatorio): string {
     toleranciaZero(relatorio),
     "",
   ];
+  if (relatorio.incompleta) {
+    linhas.push(
+      "## Não rodaram",
+      "",
+      "A cota do provedor acabou antes destes Casos. O placar conta só os que rodaram; rode de novo para continuar de onde parou.",
+      "",
+      ...relatorio.naoRodaram.map((caso) => `- \`${caso}\``),
+      "",
+    );
+  }
   if (relatorio.reprovados.length > 0) {
     linhas.push(
       "## Casos reprovados",

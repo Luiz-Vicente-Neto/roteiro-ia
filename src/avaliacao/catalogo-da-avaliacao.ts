@@ -32,13 +32,14 @@ async function trechosGravados() {
       );
     },
   });
-  return criarBaseDeTrechosEmMemoria(indice, trechos);
+  return { base: criarBaseDeTrechosEmMemoria(indice, trechos), trechos };
 }
 
 /**
  * Builds a fresh catalog from `semente.ts` and the Documentos maliciosos,
  * in memory, for each Caso: the Trechos keep their recorded vectors, and only the question the model sends
  * to buscar_politicas goes to `embedarPergunta`, since the model rewrites it.
+ * `trechos` are the id and hash of every Trecho the search sees.
  */
 export async function fabricaDeCatalogos({
   embeddings: { indice, embedarPergunta },
@@ -48,13 +49,16 @@ export async function fabricaDeCatalogos({
   embeddings: { indice: IndiceDosTrechos; embedarPergunta: Embedar };
   relogio: Relogio;
 }) {
-  const trechos = await trechosGravados();
-  await conferirIndiceDosTrechos(trechos, indice);
-  return () =>
-    criarCatalogo({
-      base: criarBaseEmMemoria(semente),
-      trechos,
-      embedarPergunta,
-      relogio,
-    });
+  const { base, trechos } = await trechosGravados();
+  await conferirIndiceDosTrechos(base, indice);
+  return {
+    novoCatalogo: () =>
+      criarCatalogo({
+        base: criarBaseEmMemoria(semente),
+        trechos: base,
+        embedarPergunta,
+        relogio,
+      }),
+    trechos: trechos.map(({ id, hash }) => ({ id, hash })),
+  };
 }
