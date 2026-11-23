@@ -8,7 +8,13 @@ Você descreve a viagem que tem na cabeça:
 
 E o assistente devolve **pacotes reais de um catálogo**, com preço e disponibilidade consultados na hora e a fonte de cada informação.
 
-> 🚧 **Em construção.** As etapas 1 (catálogo e ferramentas testadas), 2 (chat com o Assistente), 3 (busca nos textos com citações), 4 (avaliação e proteções) e 5 (servidor MCP) estão prontas. O lançamento (README final e GIF da demo) é o próximo. Acompanhe no [roadmap](#-roadmap) abaixo.
+![Demo: a busca por Gramado devolve dois cards com preço, o painel mostra a ferramenta chamada, a resposta sobre pets cita o trecho original e a pré-reserva é confirmada pelo botão do card](.github/assets/demo.gif)
+
+[![Abrir no GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/Luiz-Vicente-Neto/roteiro-ia?quickstart=1)
+
+Para testar sem instalar nada: abra no Codespaces, cole uma [chave gratuita do Google AI Studio](https://aistudio.google.com/apikey) quando ele pedir e rode `pnpm dev` no terminal. [Detalhes](#-rodando-localmente).
+
+> 🚧 **Em construção.** As etapas 1 (catálogo e ferramentas testadas), 2 (chat com o Assistente), 3 (busca nos textos com citações), 4 (avaliação e proteções) e 5 (servidor MCP) estão prontas. O lançamento (README final) é o próximo. Acompanhe no [roadmap](#-roadmap) abaixo.
 
 ---
 
@@ -203,7 +209,9 @@ cp .env.example .env   # preencha GOOGLE_GENERATIVE_AI_API_KEY, ou troque MODELO
 pnpm dev               # sobe o Postgres, aplica as migrations, roda o seed (se o banco estiver vazio), indexa os trechos e inicia o Next
 ```
 
-Abra <http://localhost:3000> e converse. O `.env.example` traz um exemplo de `MODELO` para cada provedor. Os testes não precisam de chave nem de `.env`: sem ele, usam o Postgres do `docker compose`.
+Abra <http://localhost:3000> e converse.
+
+**No GitHub Codespaces**, sem instalar nada na sua máquina: clique no botão do topo, cole a chave do Google AI Studio no campo `GOOGLE_GENERATIVE_AI_API_KEY` da tela de criação e, quando o ambiente terminar de montar, rode `pnpm dev` no terminal. A porta 3000 abre sozinha no navegador. O [.devcontainer](.devcontainer/devcontainer.json) traz o Node 24 e roda o Postgres do `docker compose` dentro do próprio Codespace. A chave fica guardada como secret da sua conta, fora do repositório. O `.env.example` traz um exemplo de `MODELO` para cada provedor. Os testes não precisam de chave nem de `.env`: sem ele, usam o Postgres do `docker compose`.
 
 > No plano gratuito do Gemini, o Google pode usar as mensagens para melhorar os produtos dele. Por isso o chat avisa que as mensagens vão para um provedor de IA.
 

@@ -1,0 +1,29 @@
+{
+  // Codespaces: o mesmo `pnpm dev` de sempre, com o Postgres do docker compose
+  // rodando dentro do container (docker-in-docker).
+  "name": "Roteiro IA",
+  "image": "mcr.microsoft.com/devcontainers/base:bookworm",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": { "version": "24" },
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  // A chave entra como secret do Codespaces, pedida na tela de criação. O
+  // .env copiado do .env.example traz o MODELO e deixa a chave vazia, e uma
+  // variável já definida nunca é sobrescrita pelo .env.
+  "secrets": {
+    "GOOGLE_GENERATIVE_AI_API_KEY": {
+      "description": "Chave gratuita do Google AI Studio para o modelo do Assistente.",
+      "documentationUrl": "https://aistudio.google.com/apikey"
+    }
+  },
+  "postCreateCommand": "cp -n .env.example .env; sudo corepack enable && corepack install && pnpm install",
+  "forwardPorts": [3000],
+  "portsAttributes": {
+    "3000": { "label": "Roteiro IA", "onAutoForward": "openBrowser" },
+    "5432": { "label": "Postgres", "onAutoForward": "silent" }
+  },
+  "customizations": {
+    "codespaces": { "openFiles": ["README.md"] },
+    "vscode": { "extensions": ["biomejs.biome"] }
+  }
+}
