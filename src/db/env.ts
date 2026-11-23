@@ -4,9 +4,12 @@ import { existsSync } from "node:fs";
 const LOCAL_DATABASE_URL =
   "postgres://roteiro:roteiro@localhost:5432/roteiro_ia";
 
-/** Loads `.env` into `process.env` when present. Never overrides variables already set. */
-export function loadDotEnv(): void {
-  if (existsSync(".env")) process.loadEnvFile(".env");
+/**
+ * Loads `.env` (or the file at `path`) into `process.env` when present.
+ * Never overrides variables already set.
+ */
+export function loadDotEnv(path = ".env"): void {
+  if (existsSync(path)) process.loadEnvFile(path);
 }
 
 export function databaseUrl(

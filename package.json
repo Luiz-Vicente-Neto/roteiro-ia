@@ -23,7 +23,8 @@
     "db:generate": "drizzle-kit generate",
     "embeddings:gravar": "tsx scripts/embeddings-gravar.ts",
     "trechos:buscar": "tsx scripts/trechos-buscar.ts",
-    "avaliacao": "tsx scripts/avaliacao.ts"
+    "avaliacao": "tsx scripts/avaliacao.ts",
+    "mcp": "tsx scripts/mcp.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.102",
@@ -31,6 +32,7 @@
     "@ai-sdk/openai": "4.0.114",
     "@ai-sdk/react": "4.0.173",
     "@ai-sdk/xai": "5.0.43",
+    "@modelcontextprotocol/server": "2.4.0",
     "ai": "7.0.169",
     "drizzle-orm": "0.45.4",
     "next": "16.4.6",
@@ -41,6 +43,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.6.6",
+    "@modelcontextprotocol/client": "2.4.0",
     "@tailwindcss/postcss": "4.3.5",
     "@types/node": "^24.19.2",
     "@types/react": "19.3.0",

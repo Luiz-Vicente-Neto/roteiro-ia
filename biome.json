@@ -45,6 +45,7 @@
         "src/app/**",
         "src/db/**",
         "src/avaliacao/**",
+        "src/mcp/**",
         "src/*.ts",
         "scripts/**",
         "!**/*.test.ts"
@@ -73,7 +74,11 @@
       }
     },
     {
-      "includes": ["src/catalogo/**/*.test.ts", "src/assistente/**/*.test.ts"],
+      "includes": [
+        "src/catalogo/**/*.test.ts",
+        "src/assistente/**/*.test.ts",
+        "src/mcp/**/*.test.ts"
+      ],
       "linter": {
         "rules": {
           "style": {
@@ -102,7 +107,12 @@
       }
     },
     {
-      "includes": ["src/catalogo/**", "src/assistente/**", "!**/*.test.ts"],
+      "includes": [
+        "src/catalogo/**",
+        "src/assistente/**",
+        "src/mcp/**",
+        "!**/*.test.ts"
+      ],
       "linter": {
         "rules": {
           "style": {

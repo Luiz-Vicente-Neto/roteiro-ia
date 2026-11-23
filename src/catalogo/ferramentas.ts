@@ -29,6 +29,8 @@ export interface Ferramenta<N extends string = string, R = Resultado> {
   /** Written for the model: when to call it and what comes back. */
   descricao: string;
   schemaDeEntrada: z.ZodType;
+  /** True when it only reads the catalog: calling it changes nothing. */
+  somenteLeitura: boolean;
   /** Takes the model's raw input: invalid input comes back as ENTRADA_INVALIDA, never as an exception. */
   executar(entrada: unknown): Promise<R>;
 }
@@ -43,6 +45,7 @@ function definirFerramenta<
   nome: N;
   descricao: string;
   schemaDeEntrada: z.ZodType;
+  somenteLeitura: boolean;
   executar: F;
 }): Ferramenta<N, Awaited<ReturnType<F>>> {
   const { executar } = ferramenta;
@@ -85,6 +88,7 @@ export function criarFerramentas<
         "Se nada servir, devolve cotacoes vazia e um diagnostico: quantas Saídas futuras havia na janela e quantas caíram pela Política de Crianças, por falta de Vagas e por orçamento (cada Saída conta só no primeiro desses motivos, nessa ordem), com o menorPreco entre as que caíram só por orçamento; use-o para explicar ao viajante e sugerir um ajuste. " +
         "Se o destino não existir, devolve DESTINO_DESCONHECIDO com os Destinos existentes em sugestoes.",
       schemaDeEntrada: entradaBuscarPacotes,
+      somenteLeitura: true,
       executar: operacoes.buscarPacotes,
     }),
     definirFerramenta({
@@ -97,6 +101,7 @@ export function criarFerramentas<
         "Se o destino não existir, devolve DESTINO_DESCONHECIDO com os Destinos existentes em sugestoes; se o pacote não existir, PACOTE_DESCONHECIDO com os slugs parecidos em sugestoes. " +
         "Se a busca estiver fora do ar, devolve BUSCA_INDISPONIVEL: repasse a mensagem ao viajante como está, sem responder com o que você sabe de fora.",
       schemaDeEntrada: entradaBuscarPoliticas,
+      somenteLeitura: true,
       executar: operacoes.buscarPoliticas,
     }),
     definirFerramenta({
@@ -107,6 +112,7 @@ export function criarFerramentas<
         "A Cotação traz o preço de cada pessoa (cada criança com a faixa de idade e o percentual do preço de adulto da Política de Crianças) e o total do Grupo em centavos, o Período Tarifário aplicado e seu fator (ou baixa temporada), os Períodos que também cobriam a data e perderam, quantas Vagas o Grupo ocupa e as Vagas restantes. " +
         "Se a data não for uma Saída do Pacote ou já tiver passado, devolve um erro com as Saídas mais próximas em sugestoes. Se o Pacote não aceitar crianças e o Grupo tiver alguma, devolve GRUPO_NAO_ACEITO com o motivo.",
       schemaDeEntrada: entradaConsultarPreco,
+      somenteLeitura: true,
       executar: operacoes.consultarPreco,
     }),
     definirFerramenta({
@@ -116,6 +122,7 @@ export function criarFerramentas<
         "Recebe o slug do Pacote e a data da Saída (AAAA-MM-DD) e devolve as Vagas totais e as Vagas restantes. " +
         "Se a data não for uma Saída do Pacote ou já tiver passado, devolve um erro com as Saídas mais próximas em sugestoes.",
       schemaDeEntrada: entradaVerificarDisponibilidade,
+      somenteLeitura: true,
       executar: operacoes.verificarDisponibilidade,
     }),
     definirFerramenta({
@@ -126,6 +133,7 @@ export function criarFerramentas<
         "Devolve o id da Proposta, a Cotação e expiraEm, o instante em que a Proposta deixa de valer: ela vale 15 minutos. Mostre ao viajante o resumo e o total e diga que ele precisa confirmar para garantir as Vagas; nunca diga que a viagem está reservada. " +
         "Se a Saída não tiver Vagas restantes para o Grupo inteiro (cada criança ocupa uma Vaga), devolve VAGAS_INSUFICIENTES com as Saídas mais próximas que cabem o Grupo em sugestoes.",
       schemaDeEntrada: entradaProporPreReserva,
+      somenteLeitura: false,
       executar: operacoes.proporPreReserva,
     }),
   ];

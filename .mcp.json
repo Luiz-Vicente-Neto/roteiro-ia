@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "roteiro-ia": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["--import", "tsx", "scripts/mcp.ts"]
+    }
+  }
+}
