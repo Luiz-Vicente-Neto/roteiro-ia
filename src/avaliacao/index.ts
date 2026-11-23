@@ -11,5 +11,6 @@ export {
 } from "./avaliar";
 export type { Caso, Casos, Categoria } from "./caso";
 export { CASOS } from "./casos";
+export { trechosMaliciosos } from "./documentos-maliciosos";
 export { relatorioEmMarkdown } from "./relatorio";
 export { type ValorInventado, valoresInventados } from "./valores-inventados";

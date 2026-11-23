@@ -22,7 +22,7 @@ export {
   type NomeDeFerramenta,
   type ResultadoDe,
 } from "./catalogo";
-export { trechosDosDocumentos } from "./documentos";
+export { trechosDaPasta, trechosDosDocumentos } from "./documentos";
 export type { EntradaBuscarPacotes, Grupo } from "./entradas";
 export type { CodigoDeErro, Falha } from "./erros";
 export type { Ferramenta } from "./ferramentas";

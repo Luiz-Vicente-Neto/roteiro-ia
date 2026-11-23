@@ -11,17 +11,19 @@ import {
   semente,
   trechosDosDocumentos,
 } from "../catalogo";
+import { trechosMaliciosos } from "./documentos-maliciosos";
 
 /**
- * The Trechos of the Documentos with their recorded vectors (docs/adr/0006),
- * in memory. A Trecho changed since the recording throws instead of being
- * embedded: the Avaliação measures the vectors the demo has.
+ * The Trechos of the Documentos, plus the Avaliação's Documentos maliciosos,
+ * with their recorded vectors (docs/adr/0006), in memory. A Trecho changed
+ * since the recording throws instead of being embedded: the Avaliação
+ * measures the vectors the demo has.
  */
 async function trechosGravados() {
   const gravados = lerVetoresGravados();
   const indice = { modelo: gravados.modelo, dimensoes: gravados.dimensoes };
   const trechos = await indexarTrechos({
-    trechos: trechosDosDocumentos(),
+    trechos: [...trechosDosDocumentos(), ...trechosMaliciosos()],
     gravados,
     indice,
     embedarTrechos: async () => {
@@ -34,8 +36,8 @@ async function trechosGravados() {
 }
 
 /**
- * Builds a fresh catalog from `semente.ts`, in memory, for each Caso: the
- * Trechos keep their recorded vectors, and only the question the model sends
+ * Builds a fresh catalog from `semente.ts` and the Documentos maliciosos,
+ * in memory, for each Caso: the Trechos keep their recorded vectors, and only the question the model sends
  * to buscar_politicas goes to `embedarPergunta`, since the model rewrites it.
  */
 export async function fabricaDeCatalogos({

@@ -175,6 +175,14 @@ export function marcadorDeCitacao(idDoTrecho: string): string {
 const MARCADOR = /\s*\[\[trecho:\s*([^\]]*?)\s*\]\]/g;
 
 /**
+ * The id inside every `[[trecho:…]]` of `texto`, in order, valid or not:
+ * what the screen would try to read as a Citação, before dropping any.
+ */
+export function idsCitados(texto: string): string[] {
+  return [...texto.matchAll(MARCADOR)].map((m) => m[1] ?? "");
+}
+
+/**
  * Reads the Citações of `mensagem`. A marker counts only when its id came back
  * from a buscar_politicas of the same Conversa, in `mensagem` or before it in
  * `conversa` (the whole Conversa, or the messages before `mensagem`); the
@@ -186,7 +194,7 @@ export function textoDaResposta(
   mensagem: UIMessage,
   conversa: UIMessage[],
 ): TextoDaResposta {
-  const consultados = trechosAte(mensagem, conversa);
+  const consultados = trechosConsultados(mensagem, conversa);
   const pedacos: PedacoDoTexto[] = [];
   const citacoes: Citacao[] = [];
   const texto = textoDaMensagem(mensagem);
@@ -232,9 +240,10 @@ function acrescentarTexto(pedacos: PedacoDoTexto[], texto: string): void {
 
 /**
  * The Trechos buscar_politicas returned in `conversa` up to `mensagem`, and in
- * `mensagem` itself, by id. A later result of the same Trecho wins.
+ * `mensagem` itself, by id: the ones a Citação of `mensagem` may point to.
+ * A later result of the same Trecho wins.
  */
-function trechosAte(
+export function trechosConsultados(
   mensagem: UIMessage,
   conversa: UIMessage[],
 ): Map<string, TrechoDaBusca> {

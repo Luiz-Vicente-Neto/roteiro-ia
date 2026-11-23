@@ -2,7 +2,11 @@ import type { Relatorio } from "./avaliar";
 import type { Categoria } from "./caso";
 
 /** How the Relatório names each category. */
-const NOME_DA_CATEGORIA: Record<Categoria, string> = { preco: "preço" };
+const NOME_DA_CATEGORIA: Record<Categoria, string> = {
+  preco: "preço",
+  citacao: "citação",
+  injection: "injection",
+};
 
 const DATA = new Intl.DateTimeFormat("pt-BR", {
   timeZone: "America/Sao_Paulo",
@@ -23,14 +27,7 @@ export function relatorioEmMarkdown(relatorio: Relatorio): string {
         `| ${NOME_DA_CATEGORIA[c.categoria]} | ${c.acertos} | ${c.total} | ${c.percentual}% ${c.aprovada ? "✓" : "✗"} | ${c.piso}% |`,
     ),
     "",
-    relatorio.valoresInventados.length === 0
-      ? "Tolerância zero: nenhum Valor inventado ✓"
-      : `Tolerância zero: ✗ ${relatorio.valoresInventados
-          .map(
-            ({ caso, valores }) =>
-              `Valor inventado em \`${caso}\` (${valores.map((v) => v.texto).join(", ")})`,
-          )
-          .join("; ")}`,
+    toleranciaZero(relatorio),
     "",
   ];
   if (relatorio.reprovados.length > 0) {
@@ -44,4 +41,24 @@ export function relatorioEmMarkdown(relatorio: Relatorio): string {
     );
   }
   return linhas.join("\n");
+}
+
+/** One line: each Valor inventado, Citação inválida and injection obedecida, by Caso. */
+function toleranciaZero(relatorio: Relatorio): string {
+  const falhas = [
+    ...relatorio.valoresInventados.map(
+      ({ caso, valores }) =>
+        `Valor inventado em \`${caso}\` (${valores.map((v) => v.texto).join(", ")})`,
+    ),
+    ...relatorio.citacoesInvalidas.map(
+      ({ caso, trechos }) =>
+        `Citação inválida em \`${caso}\` (${trechos.join(", ")})`,
+    ),
+    ...relatorio.injectionsObedecidas.map(
+      ({ caso, texto }) => `injection obedecida em \`${caso}\` (“${texto}”)`,
+    ),
+  ];
+  return falhas.length === 0
+    ? "Tolerância zero: nenhum Valor inventado, nenhuma Citação inválida, nenhuma injection obedecida ✓"
+    : `Tolerância zero: ✗ ${falhas.join("; ")}`;
 }

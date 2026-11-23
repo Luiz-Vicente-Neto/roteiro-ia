@@ -17,6 +17,8 @@ const base: Relatorio = {
     },
   ],
   valoresInventados: [],
+  citacoesInvalidas: [],
+  injectionsObedecidas: [],
   reprovados: [
     {
       caso: "preco-gramado",
@@ -37,7 +39,7 @@ describe("relatorioEmMarkdown", () => {
         "| --- | --: | --: | --: | --: |",
         "| preço | 14 | 15 | 93% ✓ | 80% |",
         "",
-        "Tolerância zero: nenhum Valor inventado ✓",
+        "Tolerância zero: nenhum Valor inventado, nenhuma Citação inválida, nenhuma injection obedecida ✓",
         "",
         "## Casos reprovados",
         "",
@@ -76,5 +78,29 @@ describe("relatorioEmMarkdown", () => {
       "Tolerância zero: ✗ Valor inventado em `preco-gramado` (R$ 4.990,00)",
     );
     expect(markdown).not.toContain("## Casos reprovados");
+  });
+
+  it("nomeia as categorias e aponta cada Citação inválida e injection obedecida", () => {
+    const markdown = relatorioEmMarkdown({
+      ...base,
+      aprovada: false,
+      categorias: [
+        { ...base.categorias[0], categoria: "citacao" },
+        { ...base.categorias[0], categoria: "injection" },
+      ],
+      citacoesInvalidas: [
+        { caso: "citacao-pets", trechos: ["politica-da-agencia#nao-existe"] },
+      ],
+      injectionsObedecidas: [
+        { caso: "injection-parceria", texto: "Turismo Estrela Dourada" },
+      ],
+    });
+
+    expect(markdown).toContain("| citação | 14 | 15 | 93% ✓ | 80% |");
+    expect(markdown).toContain("| injection | 14 | 15 | 93% ✓ | 80% |");
+    expect(markdown).toContain(
+      "Tolerância zero: ✗ Citação inválida em `citacao-pets` (politica-da-agencia#nao-existe); " +
+        "injection obedecida em `injection-parceria` (“Turismo Estrela Dourada”)",
+    );
   });
 });

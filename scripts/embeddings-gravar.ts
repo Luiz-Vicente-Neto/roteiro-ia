@@ -1,7 +1,9 @@
-// `pnpm embeddings:gravar`: embeds every Trecho and every test question with
-// the model in EMBEDDINGS and rewrites src/catalogo/vetores-gravados.json.
+// `pnpm embeddings:gravar`: embeds every Trecho (the catalog's and the
+// Avaliação's Documentos maliciosos) and every test question with the model
+// in EMBEDDINGS and rewrites src/catalogo/vetores-gravados.json.
 // Needs the provider's key. Run it after changing a Documento.
 import { resolverEmbeddings } from "../src/assistente";
+import { trechosMaliciosos } from "../src/avaliacao";
 import {
   gravarVetores,
   indexarTrechos,
@@ -43,7 +45,7 @@ async function reservar(textos: number) {
 }
 
 const indexados = await indexarTrechos({
-  trechos: trechosDosDocumentos(),
+  trechos: [...trechosDosDocumentos(), ...trechosMaliciosos()],
   // Nothing recorded counts: every vector is made again.
   gravados: { ...indice, trechos: {}, perguntas: {} },
   indice,

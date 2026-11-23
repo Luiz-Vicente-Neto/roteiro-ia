@@ -130,8 +130,8 @@ function origemDoDocumento(
 }
 
 /** Every `##` section of the Documento in `arquivo` (in a FAQ, every question) becomes one Trecho. */
-function trechosDoArquivo(arquivo: string): Trecho[] {
-  const conteudo = readFileSync(join(pasta(), arquivo), "utf8").replace(
+function trechosDoArquivo(diretorio: string, arquivo: string): Trecho[] {
+  const conteudo = readFileSync(join(diretorio, arquivo), "utf8").replace(
     /\r\n/g,
     "\n",
   );
@@ -166,8 +166,17 @@ function trechosDoArquivo(arquivo: string): Trecho[] {
 
 /** The Trechos of every Documento, in file order and then section order. */
 export function trechosDosDocumentos(): Trecho[] {
-  return readdirSync(pasta())
+  return trechosDaPasta(pasta());
+}
+
+/**
+ * The Trechos of the Documentos in `diretorio`, written like the catalog's,
+ * in file order and then section order. For Documentos that live outside
+ * the catalog, such as the Avaliação's malicious ones.
+ */
+export function trechosDaPasta(diretorio: string): Trecho[] {
+  return readdirSync(diretorio)
     .filter((arquivo) => arquivo.endsWith(".md"))
     .sort()
-    .flatMap(trechosDoArquivo);
+    .flatMap((arquivo) => trechosDoArquivo(diretorio, arquivo));
 }
