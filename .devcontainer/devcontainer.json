@@ -5,7 +5,9 @@
   "image": "mcr.microsoft.com/devcontainers/base:bookworm",
   "features": {
     "ghcr.io/devcontainers/features/node:1": { "version": "24" },
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {},
+    // Para `gh codespace ssh` e `gh codespace logs` funcionarem.
+    "ghcr.io/devcontainers/features/sshd:1": {}
   },
   // A chave entra como secret do Codespaces, pedida na tela de criação. O
   // .env copiado do .env.example traz o MODELO e deixa a chave vazia, e uma
