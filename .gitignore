@@ -12,6 +12,7 @@ next-env.d.ts
 # Variáveis de ambiente: nunca commitar chaves!
 .env
 .env*.local
+.env.producao
 !.env.example
 
 # Logs
