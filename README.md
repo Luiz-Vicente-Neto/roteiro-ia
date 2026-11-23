@@ -68,10 +68,10 @@ flowchart TB
 
   V -->|mensagem| API --> A
   V -->|clique no card| SA --> A
-  A <-->|"tool use"| LLM
+  LLM <-->|"tool use"| A
   A -->|"5 ferramentas"| C
   CL --> MCP -->|"mesmas 5 ferramentas"| C
-  C -->|"embedding da pergunta"| EMB
+  EMB <-->|"embedding da pergunta"| C
   C --> PG
   C -.-> MEM
 ```
