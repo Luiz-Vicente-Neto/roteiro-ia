@@ -24,7 +24,8 @@
     "embeddings:gravar": "tsx scripts/embeddings-gravar.ts",
     "trechos:buscar": "tsx scripts/trechos-buscar.ts",
     "avaliacao": "tsx scripts/avaliacao.ts",
-    "mcp": "tsx scripts/mcp.ts"
+    "mcp": "tsx scripts/mcp.ts",
+    "mcp:sonda": "tsx scripts/mcp-sonda.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "4.0.102",

@@ -215,6 +215,7 @@ Abra <http://localhost:3000> e converse. O `.env.example` traz um exemplo de `MO
 | `pnpm embeddings:gravar` | Regrava os vetores dos trechos depois de editar um documento (precisa da chave do provedor de embeddings) |
 | `pnpm avaliacao` | Roda a [avaliação](#-avaliação) com o modelo do `.env` (`--categoria <c>` ou `--caso <id>` para rodar só uma parte) |
 | `pnpm mcp` | Sobe o [servidor MCP](#-servidor-mcp) no stdio (normalmente quem inicia é o cliente) |
+| `pnpm mcp:sonda` | Confere o servidor MCP de ponta a ponta no Postgres, conversando com ele como o Claude Code |
 | `pnpm lint` / `pnpm format` | Confere / corrige lint e formatação (Biome) |
 | `pnpm typecheck` | Checa os tipos |
 | `pnpm test` | Testes em memória |
