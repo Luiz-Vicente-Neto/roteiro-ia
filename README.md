@@ -46,7 +46,7 @@ A maioria dos chatbots com IA responde de memória e, às vezes, inventa. O Rote
 ## 🏗️ Arquitetura
 
 ```mermaid
-flowchart LR
+flowchart TB
   V["🧑 Viajante<br/>(navegador)"]
   CL["🤖 Claude Code<br/>Claude Desktop"]
 
