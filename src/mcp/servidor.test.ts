@@ -7,7 +7,6 @@ import {
   createRequestStateCodec,
   type Transport,
 } from "@modelcontextprotocol/server";
-import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { z } from "zod";
 import {
@@ -19,7 +18,7 @@ import {
 } from "../catalogo";
 import { catalogoDeTeste } from "../catalogo/catalogo-de-teste";
 import { buscaNosTextosDeTeste } from "../catalogo/textos-de-teste";
-import { criarServidorMcp, type OpcoesDoServidorMcp } from "./index";
+import { type OpcoesDoServidorMcp, servirMcp } from "./index";
 
 const LEITURAS = [
   "buscar_pacotes",
@@ -66,7 +65,9 @@ function servir(
   catalogo: Catalogo,
   opcoes?: OpcoesDoServidorMcp,
 ) {
-  serveStdio(() => criarServidorMcp(catalogo, opcoes), {
+  servirMcp(catalogo, {
+    ...opcoes,
+    aoFechar: () => {},
     transport: transporte as unknown as Transport,
   });
 }

@@ -3,7 +3,6 @@
 // starts it as a child process. stdout is the protocol: every log goes to
 // stderr (console.error), never console.log.
 import { join } from "node:path";
-import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { resolverEmbeddings } from "../src/assistente";
 import {
   conferirIndiceDosTrechos,
@@ -14,7 +13,7 @@ import { criarBaseDeTrechosPostgres } from "../src/db/base-de-trechos-postgres";
 import { criarBasePostgres } from "../src/db/base-postgres";
 import { createDb } from "../src/db/client";
 import { databaseUrl, loadDotEnv } from "../src/db/env";
-import { criarServidorMcp } from "../src/mcp";
+import { servirMcp } from "../src/mcp";
 
 // The client picks the working directory, so the .env is found from this
 // file. Variables the client already set (its `env`) win.
@@ -64,16 +63,12 @@ const catalogo = criarCatalogo({
   relogio: relogioDoSistema(),
 });
 
-const conexao = serveStdio(
-  () => {
-    const servidor = criarServidorMcp(catalogo);
-    servidor.server.onclose = () => void fechar();
-    return servidor;
-  },
-  { onerror: (erro) => console.error("roteiro-ia (MCP):", erro) },
-);
-// The client closing stdin ends the connection, even one that never opened.
-process.stdin.once("end", () => void fechar());
+// The pool closes when the connection ends (the client goes, stdin ends, a
+// signal), never when one server instance closes: see servirMcp.
+const conexao = servirMcp(catalogo, {
+  aoFechar: () => void fechar(),
+  onerror: (erro) => console.error("roteiro-ia (MCP):", erro),
+});
 for (const sinal of ["SIGINT", "SIGTERM"] as const) {
   process.once(sinal, () => void conexao.close().then(fechar));
 }
