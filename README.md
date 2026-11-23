@@ -8,7 +8,7 @@ Você descreve a viagem que tem na cabeça:
 
 E o assistente devolve **pacotes reais de um catálogo**, com preço e disponibilidade consultados na hora e a fonte de cada informação.
 
-> 🚧 **Em construção.** As etapas 1 (catálogo e ferramentas testadas), 2 (chat com o Assistente), 3 (busca nos textos com citações), 4 (avaliação e proteções) e 5 (servidor MCP) estão prontas. O lançamento, com deploy público, é o próximo. Acompanhe no [roadmap](#-roadmap) abaixo.
+> 🚧 **Em construção.** As etapas 1 (catálogo e ferramentas testadas), 2 (chat com o Assistente), 3 (busca nos textos com citações), 4 (avaliação e proteções) e 5 (servidor MCP) estão prontas. O lançamento (README final e GIF da demo) é o próximo. Acompanhe no [roadmap](#-roadmap) abaixo.
 
 ---
 
@@ -36,7 +36,6 @@ A maioria dos chatbots com IA responde de memória e, às vezes, inventa. O Rote
 | Busca nos textos (RAG) | pgvector + busca por palavras em português, fundidas por RRF · embeddings trocáveis no `.env` (Gemini por padrão) | ✅ |
 | Avaliação e proteções | 40 perguntas com o modelo real · LLM juiz só nas recusas · workflow manual no GitHub Actions · rate limit no Postgres | ✅ |
 | Integração externa | Servidor MCP local (stdio) com o SDK oficial em TypeScript (v2) · confirmação por elicitação | ✅ |
-| Deploy | Vercel + Supabase | 🔜 |
 
 ---
 
@@ -147,7 +146,7 @@ As cinco ferramentas do catálogo também rodam como um servidor MCP local ([src
 | Claude Code (extensão do VS Code) | ✅ | ❌ não mostra a pergunta e responde "não" sozinho, então nada é reservado. Para confirmar, use o Claude Code no terminal |
 | Claude Desktop (chat) | ✅ | ❌ não mostra a pergunta, então a pré-reserva é recusada sem reservar nada, e a resposta aponta o chat web |
 
-Se esses clientes passarem a mostrar elicitações, nada muda no servidor: a mesma pergunta passa a aparecer lá. Depois do deploy, uma alternativa é a elicitação em URL, em que a pessoa confirma numa página do próprio app web.
+Se esses clientes passarem a mostrar elicitações, nada muda no servidor: a mesma pergunta passa a aparecer lá.
 
 ### Conectar
 
@@ -233,7 +232,7 @@ O `pnpm install` instala um pre-commit ([lefthook.yml](lefthook.yml)) que roda l
 - [x] **3. RAG:** busca híbrida nos documentos do catálogo, com citação de cada trecho em nota de rodapé
 - [x] **4. Avaliação e proteções:** 40 perguntas medidas com o modelo real (local ou no GitHub Actions), rate limit por IP e teto diário, e prova de resistência a prompt injection
 - [x] **5. Servidor MCP:** as mesmas ferramentas no Claude Code e no Claude Desktop, leituras livres e pré-reserva só com a confirmação da pessoa
-- [ ] **6. Lançamento:** README completo, GIF da demo, diagrama de arquitetura e deploy público
+- [ ] **6. Lançamento:** README completo, GIF da demo e diagrama de arquitetura. Sem deploy público: a demo roda localmente com um comando
 
 ---
 
