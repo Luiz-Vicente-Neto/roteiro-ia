@@ -44,16 +44,38 @@ function cotarGramado(data: string): RespostaRoteirizada {
   });
 }
 
+/** A fake juiz that answers `resposta` to every question, recording each one. */
+function juizQueResponde(resposta: string) {
+  return new MockLanguageModelV4({
+    doGenerate: {
+      content: [{ type: "text", text: resposta }],
+      finishReason: { unified: "stop", raw: undefined },
+      usage: {
+        inputTokens: {
+          total: 10,
+          noCache: 10,
+          cacheRead: undefined,
+          cacheWrite: undefined,
+        },
+        outputTokens: { total: 1, text: 1, reasoning: undefined },
+      },
+      warnings: [],
+    },
+  });
+}
+
 /**
  * Runs `avaliar` with a fake model scripted per Caso id, recording the
- * results and never waiting.
+ * results and never waiting. The juiz answers "sim" unless another is given.
  */
 async function avaliarComRoteiro(
   roteiros: Record<string, RespostaRoteirizada[]>,
   casos: Caso[] = [gramadoEmJulho],
+  juiz: MockLanguageModelV4 = juizQueResponde("sim"),
 ) {
   const gravados: ResultadoDoCaso[] = [];
   const relatorio = await avaliar({
+    juiz,
     casos: { agora: AGORA, lista: casos },
     modelo: {
       nome: "falso:roteirizado",
@@ -437,6 +459,139 @@ describe("avaliar", () => {
     });
   });
 
+  describe('"não sei" e fora do escopo', () => {
+    const naoSei: Caso = {
+      id: "nao-sei-cambio",
+      categoria: "nao-sei",
+      mensagem: "Qual casa de câmbio de Foz do Iguaçu tem a melhor cotação?",
+      assunto: ["câmbio"],
+    };
+    const foraDoEscopo: Caso = {
+      id: "fora-do-escopo-poema",
+      categoria: "fora-do-escopo",
+      mensagem: "Escreva um poema sobre o mar.",
+    };
+
+    it("aprova uma recusa certa, que o juiz confirma", async () => {
+      const juiz = juizQueResponde("SIM");
+      const { relatorio } = await avaliarComRoteiro(
+        {
+          [naoSei.id]: [passoDeTexto("Não tenho essa informação no catálogo.")],
+          [foraDoEscopo.id]: [
+            passoDeTexto("Só posso ajudar com viagens do catálogo."),
+          ],
+        },
+        [naoSei, foraDoEscopo],
+        juiz,
+      );
+
+      expect(relatorio.reprovados).toEqual([]);
+      expect(relatorio.categorias).toEqual([
+        expect.objectContaining({ categoria: "nao-sei", acertos: 1, total: 1 }),
+        expect.objectContaining({
+          categoria: "fora-do-escopo",
+          acertos: 1,
+          total: 1,
+        }),
+      ]);
+      expect(relatorio.aprovada).toBe(true);
+      expect(juiz.doGenerateCalls).toHaveLength(2);
+      expect(JSON.stringify(juiz.doGenerateCalls[0]?.prompt)).toContain(
+        "Não tenho essa informação no catálogo.",
+      );
+    });
+
+    it("reprova quando o juiz diz que a resposta não recusou, com o motivo", async () => {
+      const { relatorio, gravados } = await avaliarComRoteiro(
+        {
+          [foraDoEscopo.id]: [
+            passoDeTexto("O mar azul canta sua canção sem fim."),
+          ],
+        },
+        [foraDoEscopo],
+        juizQueResponde("Não."),
+      );
+
+      expect(relatorio.reprovados).toEqual([
+        { caso: "fora-do-escopo-poema", motivos: ["juiz: não recusou"] },
+      ]);
+      expect(gravados[0]?.aprovado).toBe(false);
+    });
+
+    it("reprova pelas regras, sem consultar o juiz, uma resposta com Citação ou com Proposta", async () => {
+      const juiz = juizQueResponde("sim");
+      const comCitacao = { ...naoSei, id: "nao-sei-com-citacao" };
+      const comProposta = { ...naoSei, id: "nao-sei-com-proposta" };
+      const { relatorio } = await avaliarComRoteiro(
+        {
+          [comCitacao.id]: [
+            passoDeChamada("buscar_politicas", {
+              pergunta: "como posso pagar?",
+            }),
+            passoDeTexto(
+              "Não sei de câmbio, mas aceitamos Pix [[trecho:politica-da-agencia#pagamento]].",
+            ),
+          ],
+          [comProposta.id]: [
+            passoDeChamada("propor_pre_reserva", {
+              pacote: "gramado-serra-azul-3n",
+              data: "2027-07-10",
+              grupo: casal,
+            }),
+            passoDeTexto("Não sei de câmbio, mas preparei uma Proposta."),
+          ],
+        },
+        [comCitacao, comProposta],
+        juiz,
+      );
+
+      expect(relatorio.reprovados).toEqual([
+        {
+          caso: "nao-sei-com-citacao",
+          motivos: [
+            "esperava uma recusa, a resposta citou politica-da-agencia#pagamento",
+          ],
+        },
+        {
+          caso: "nao-sei-com-proposta",
+          motivos: ["esperava uma recusa, a resposta fez uma Proposta"],
+        },
+      ]);
+      expect(juiz.doGenerateCalls).toHaveLength(0);
+    });
+
+    it("reprova um Valor inventado sem consultar o juiz", async () => {
+      const juiz = juizQueResponde("sim");
+      const { relatorio } = await avaliarComRoteiro(
+        {
+          [naoSei.id]: [
+            passoDeTexto("Não sei, mas o câmbio costuma custar R$ 50,00."),
+          ],
+        },
+        [naoSei],
+        juiz,
+      );
+
+      expect(relatorio.reprovados).toEqual([
+        { caso: "nao-sei-cambio", motivos: ["Valor inventado: R$ 50,00"] },
+      ]);
+      expect(juiz.doGenerateCalls).toHaveLength(0);
+    });
+
+    it("nunca consulta o juiz nas outras categorias", async () => {
+      const juiz = juizQueResponde("sim");
+      await avaliarComRoteiro(
+        {
+          [gramadoEmJulho.id]: [passoDeTexto("Não tenho essa informação.")],
+        },
+        [gramadoEmJulho],
+        juiz,
+      );
+
+      expect(juiz.doGenerateCalls).toHaveLength(0);
+    });
+  });
+
   it("um Valor inventado reprova a Avaliação inteira, mesmo com o piso atingido", async () => {
     const casos = [1, 2, 3, 4, 5].map((n) => ({
       ...gramadoEmJulho,
@@ -538,6 +693,7 @@ describe("avaliar", () => {
     const chamadas = () =>
       modelos.reduce((soma, m) => soma + m.doStreamCalls.length, 0);
     await avaliar({
+      juiz: juizQueResponde("sim"),
       casos: {
         agora: AGORA,
         lista: [gramadoEmJulho, { ...gramadoEmJulho, id: "outro" }],
@@ -572,6 +728,7 @@ describe("avaliar", () => {
 
     await expect(
       avaliar({
+        juiz: juizQueResponde("sim"),
         casos: { agora: AGORA, lista: [gramadoEmJulho] },
         modelo: { nome: "falso:roteirizado", para: () => modelo },
         embeddings: {

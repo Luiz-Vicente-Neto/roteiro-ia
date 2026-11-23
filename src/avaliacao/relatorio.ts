@@ -6,6 +6,8 @@ const NOME_DA_CATEGORIA: Record<Categoria, string> = {
   preco: "preço",
   citacao: "citação",
   injection: "injection",
+  "nao-sei": "não sei",
+  "fora-do-escopo": "fora do escopo",
 };
 
 const DATA = new Intl.DateTimeFormat("pt-BR", {

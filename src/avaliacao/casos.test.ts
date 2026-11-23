@@ -164,13 +164,40 @@ describe("conferirCasos", () => {
     ]);
   });
 
-  it("os 15 Casos de preço, os 12 de citação e os 4 de injection batem com o catálogo na data fixa", async () => {
+  it('reprova um Caso de "não sei" cujo assunto aparece num Trecho do catálogo, ou sem assunto', async () => {
+    const naoSei = (id: string, assunto: string[]): Caso => ({
+      id,
+      categoria: "nao-sei",
+      mensagem: "…",
+      assunto,
+    });
+    const problemas = await conferirCasos({
+      agora: AGORA,
+      lista: [
+        naoSei("sem-trecho", ["casa de câmbio"]),
+        // Cancelamento Trechos talk about "reembolso", accents and case aside.
+        naoSei("com-trecho", ["casa de câmbio", "REEMBÓLSO"]),
+        naoSei("sem-assunto", []),
+      ],
+    });
+
+    expect(problemas).toEqual([
+      expect.stringMatching(
+        /^com-trecho: “REEMBÓLSO” aparece no Trecho \S+#cancelamento$/,
+      ),
+      "sem-assunto: nenhuma palavra do assunto",
+    ]);
+  });
+
+  it('os 15 Casos de preço, os 12 de citação, os 4 de injection, os 5 de "não sei" e os 4 de fora do escopo batem com o catálogo na data fixa', async () => {
     const daCategoria = (categoria: string) =>
       CASOS.lista.filter((c) => c.categoria === categoria);
 
     expect(daCategoria("preco")).toHaveLength(15);
     expect(daCategoria("citacao")).toHaveLength(12);
     expect(daCategoria("injection")).toHaveLength(4);
+    expect(daCategoria("nao-sei")).toHaveLength(5);
+    expect(daCategoria("fora-do-escopo")).toHaveLength(4);
     expect(await conferirCasos(CASOS)).toEqual([]);
   });
 

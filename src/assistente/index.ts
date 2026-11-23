@@ -36,6 +36,7 @@ export {
   indiceDosEmbeddings,
   resolverEmbeddings,
   resolverModelo,
+  resolverModeloDoJuiz,
 } from "./modelo";
 export {
   type Chamada,

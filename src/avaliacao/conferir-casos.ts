@@ -11,6 +11,7 @@ import {
   eaCotacaoEsperada,
   emReais,
   pacoteESaida,
+  semAcento,
 } from "./caso";
 import { fabricaDeCatalogos } from "./catalogo-da-avaliacao";
 import { trechosMaliciosos } from "./documentos-maliciosos";
@@ -24,7 +25,8 @@ type CasoDe<C extends Caso["categoria"]> = Extract<Caso, { categoria: C }>;
  * its Grupo, and its busca, if any, must return it; a "nenhum Pacote serve"
  * busca must return nothing. A citação Caso's Trechos must exist among the
  * catalog's Documentos. An injection Caso's Documento must be one of the
- * Documentos maliciosos, and ask for its marca. No model and no embedding.
+ * Documentos maliciosos, and ask for its marca. No Trecho of the catalog
+ * may have a word of a "não sei" Caso's assunto. No model and no embedding.
  */
 export async function conferirCasos(casos: Casos): Promise<string[]> {
   const { modelo, dimensoes } = lerVetoresGravados();
@@ -38,22 +40,63 @@ export async function conferirCasos(casos: Casos): Promise<string[]> {
     relogio: relogioFixo(casos.agora),
   });
   const catalogo = novoCatalogo();
-  const trechosDoCatalogo = new Set(trechosDosDocumentos().map((t) => t.id));
+  const trechos = trechosDosDocumentos();
+  const trechosDoCatalogo = new Set(trechos.map((t) => t.id));
   const maliciosos = trechosMaliciosos();
   const problemas: string[] = [];
   const vistos = new Set<string>();
   for (const caso of casos.lista) {
     if (vistos.has(caso.id)) problemas.push(`${caso.id}: id repetido`);
     vistos.add(caso.id);
-    const doCaso =
-      caso.categoria === "preco"
-        ? await problemasDoPreco(caso, catalogo)
-        : caso.categoria === "citacao"
-          ? problemasDaCitacao(caso, trechosDoCatalogo)
-          : problemasDaInjection(caso, maliciosos);
+    const doCaso = await problemasDoCaso(caso, {
+      catalogo,
+      trechos,
+      trechosDoCatalogo,
+      maliciosos,
+    });
     problemas.push(...doCaso.map((p) => `${caso.id}: ${p}`));
   }
   return problemas;
+}
+
+async function problemasDoCaso(
+  caso: Caso,
+  contexto: {
+    catalogo: Catalogo;
+    trechos: Trecho[];
+    trechosDoCatalogo: Set<string>;
+    maliciosos: Trecho[];
+  },
+): Promise<string[]> {
+  switch (caso.categoria) {
+    case "preco":
+      return problemasDoPreco(caso, contexto.catalogo);
+    case "citacao":
+      return problemasDaCitacao(caso, contexto.trechosDoCatalogo);
+    case "injection":
+      return problemasDaInjection(caso, contexto.maliciosos);
+    case "nao-sei":
+      return problemasDoNaoSei(caso, contexto.trechos);
+    case "fora-do-escopo":
+      return [];
+  }
+}
+
+/**
+ * A Trecho with a word of the assunto may answer the message, so "não sei"
+ * would no longer be the right answer. The first such Trecho per word.
+ */
+function problemasDoNaoSei(
+  { assunto }: CasoDe<"nao-sei">,
+  trechos: Trecho[],
+): string[] {
+  if (assunto.length === 0) return ["nenhuma palavra do assunto"];
+  return assunto.flatMap((palavra) => {
+    const trecho = trechos.find((t) =>
+      semAcento(t.textoCitado).includes(semAcento(palavra)),
+    );
+    return trecho ? [`“${palavra}” aparece no Trecho ${trecho.id}`] : [];
+  });
 }
 
 async function problemasDoPreco(

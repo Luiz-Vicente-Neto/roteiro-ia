@@ -3,6 +3,7 @@ import {
   indiceDosEmbeddings,
   resolverEmbeddings,
   resolverModelo,
+  resolverModeloDoJuiz,
 } from "./modelo";
 
 describe("resolverModelo", () => {
@@ -90,6 +91,44 @@ describe("resolverModelo", () => {
         GOOGLE_GENERATIVE_AI_API_KEY: "",
       }),
     ).toThrow(/GOOGLE_GENERATIVE_AI_API_KEY/);
+  });
+});
+
+describe("resolverModeloDoJuiz", () => {
+  it("usa o MODELO quando MODELO_JUIZ não está definido", () => {
+    const juiz = resolverModeloDoJuiz({
+      MODELO: "google:gemini-3.8-flash",
+      GOOGLE_GENERATIVE_AI_API_KEY: "chave-de-teste",
+    });
+
+    expect(juiz.nome).toBe("google:gemini-3.8-flash");
+    expect(juiz.modelo.modelId).toBe("gemini-3.8-flash");
+  });
+
+  it("usa o MODELO_JUIZ quando definido, com a chave do provedor dele", () => {
+    const juiz = resolverModeloDoJuiz({
+      MODELO: "google:gemini-3.8-flash",
+      MODELO_JUIZ: "anthropic:claude-haiku-5-5",
+      ANTHROPIC_API_KEY: "chave-de-teste",
+    });
+
+    expect(juiz.nome).toBe("anthropic:claude-haiku-5-5");
+    expect(juiz.modelo.provider).toMatch(/anthropic/);
+    expect(juiz.modelo.modelId).toBe("claude-haiku-5-5");
+  });
+
+  it("recusa um provedor desconhecido no MODELO_JUIZ, nomeando a variável", () => {
+    expect(() =>
+      resolverModeloDoJuiz({
+        MODELO: "google:gemini-3.8-flash",
+        MODELO_JUIZ: "groq:llama-5",
+        GOOGLE_GENERATIVE_AI_API_KEY: "chave-de-teste",
+      }),
+    ).toThrow(/MODELO_JUIZ=groq:llama-5: provedor "groq" desconhecido/);
+  });
+
+  it("recusa quando nem MODELO_JUIZ nem MODELO estão definidos", () => {
+    expect(() => resolverModeloDoJuiz({})).toThrow(/MODELO.*provedor:modelo/);
   });
 });
 

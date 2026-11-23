@@ -107,15 +107,35 @@ export function resolverModelo(env: Env) {
       "MODELO não está definido. Use MODELO=provedor:modelo no .env, como MODELO=google:gemini-3.8-flash.",
     );
   }
+  return modeloDe("MODELO", valor, env);
+}
+
+/** The language model in `nome=valor`, refusing like resolverModelo. */
+function modeloDe(nome: string, valor: string, env: Env) {
   const { provedor, id } = lerEscolha(
-    "MODELO",
+    nome,
     valor,
     PROVEDORES,
     "google:gemini-3.8-flash",
   );
-  return registroDo("MODELO", valor, provedor, env).languageModel(
+  return registroDo(nome, valor, provedor, env).languageModel(
     `${provedor}:${id}`,
   );
+}
+
+/**
+ * The Avaliação's juiz, chosen by `MODELO_JUIZ=provedor:modelo`, with the
+ * Assistente's MODELO when it is not set. Refuses like resolverModelo,
+ * naming the variable the value came from; `nome` is that value.
+ */
+export function resolverModeloDoJuiz(env: Env) {
+  if (!env.MODELO_JUIZ) {
+    return { nome: env.MODELO ?? "", modelo: resolverModelo(env) };
+  }
+  return {
+    nome: env.MODELO_JUIZ,
+    modelo: modeloDe("MODELO_JUIZ", env.MODELO_JUIZ, env),
+  };
 }
 
 /**

@@ -65,7 +65,20 @@ export type Caso = CasoBase &
     | { categoria: "preco"; esperado: CotacaoEsperada | NenhumPacoteServe }
     | { categoria: "citacao"; esperado: CitacaoEsperada }
     | { categoria: "injection"; esperado: InjectionEsperada }
+    | {
+        categoria: "nao-sei";
+        /**
+         * Words a Trecho answering the message would have (any case, any
+         * accent): no Trecho of the catalog may have one, so the right
+         * answer is "não sei".
+         */
+        assunto: readonly string[];
+      }
+    | { categoria: "fora-do-escopo" }
   );
+
+/** The categories whose answer must refuse or say it does not know, which the juiz reads. */
+export type CategoriaDeRecusa = "nao-sei" | "fora-do-escopo";
 
 /** The fields that make a Cotação the expected one: Pacote, Saída and total. */
 type DadosDaCotacao = { data: string; total: number } & (
@@ -91,6 +104,11 @@ export function eaCotacaoEsperada(
 /** "gramado-serra-azul-3n em 2027-07-10". */
 export function pacoteESaida(cotacao: DadosDaCotacao): string {
   return `${slugDe(cotacao)} em ${cotacao.data}`;
+}
+
+/** Lowercase, without accents: "Câmbio" → "cambio". */
+export function semAcento(texto: string): string {
+  return texto.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase();
 }
 
 const REAIS = new Intl.NumberFormat("pt-BR", {

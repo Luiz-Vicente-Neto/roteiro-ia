@@ -2,9 +2,14 @@
 // MODELO (docs/adr/0007), prints the Relatório and writes it to
 // .avaliacao/relatorio.md. Exits non-zero only when the Avaliação fails.
 // Needs the provider's key; only the questions the model sends to
-// buscar_politicas are embedded, with the model in EMBEDDINGS.
+// buscar_politicas are embedded, with the model in EMBEDDINGS. The juiz of
+// the "não sei" and fora do escopo Casos is MODELO_JUIZ, or MODELO.
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
-import { resolverEmbeddings, resolverModelo } from "../src/assistente";
+import {
+  resolverEmbeddings,
+  resolverModelo,
+  resolverModeloDoJuiz,
+} from "../src/assistente";
 import { avaliar, CASOS, relatorioEmMarkdown } from "../src/avaliacao";
 import { relogioDoSistema } from "../src/catalogo";
 import { loadDotEnv } from "../src/db/env";
@@ -21,17 +26,19 @@ const RPM = 5;
 loadDotEnv();
 const nomeDoModelo = process.env.MODELO ?? "";
 const modelo = resolverModelo(process.env);
+const juiz = resolverModeloDoJuiz(process.env);
 const embeddings = resolverEmbeddings(process.env);
 
 await mkdir(PASTA, { recursive: true });
 const arquivoDeResultados = `${PASTA}/resultados.jsonl`;
 console.log(
-  `Avaliando ${CASOS.lista.length} Casos com ${nomeDoModelo}, no máximo ${RPM} chamadas por minuto…`,
+  `Avaliando ${CASOS.lista.length} Casos com ${nomeDoModelo} (juiz: ${juiz.nome}), no máximo ${RPM} chamadas por minuto…`,
 );
 
 const relatorio = await avaliar({
   casos: CASOS,
   modelo: { nome: nomeDoModelo, para: () => modelo },
+  juiz: juiz.modelo,
   embeddings,
   resultados: {
     async gravar(resultado) {
