@@ -33,6 +33,11 @@ import {
   textoDaResposta,
   trechosDaChamada,
 } from ".";
+import {
+  passoDeChamada,
+  passoDeTexto,
+  type RespostaRoteirizada,
+} from "./modelo-de-teste";
 
 /**
  * Exceptions thrown inside a tool or inside the embedding it calls, since
@@ -75,42 +80,6 @@ const catalogo = criarCatalogo({
   relogio,
 });
 
-type RespostaRoteirizada = ConstructorParameters<
-  typeof MockLanguageModelV4
->[0] extends infer O
-  ? O extends { doStream?: infer D }
-    ? Exclude<D, unknown[] | ((...args: never[]) => unknown)>
-    : never
-  : never;
-
-const uso = {
-  inputTokens: {
-    total: 10,
-    noCache: 10,
-    cacheRead: undefined,
-    cacheWrite: undefined,
-  },
-  outputTokens: { total: 5, text: 5, reasoning: undefined },
-};
-
-/** One model step that answers with `texto`, in two deltas to show streaming. */
-function passoDeTexto(conteudo: string): RespostaRoteirizada {
-  const meio = Math.floor(conteudo.length / 2);
-  return {
-    stream: convertArrayToReadableStream([
-      { type: "text-start", id: "t1" },
-      { type: "text-delta", id: "t1", delta: conteudo.slice(0, meio) },
-      { type: "text-delta", id: "t1", delta: conteudo.slice(meio) },
-      { type: "text-end", id: "t1" },
-      {
-        type: "finish",
-        finishReason: { unified: "stop", raw: undefined },
-        usage: uso,
-      },
-    ]),
-  };
-}
-
 /**
  * How a test declares that a tool call fails: the catalog's code, or
  * ERRO_DO_SDK when the SDK refuses the call before any tool runs (a tool
@@ -136,21 +105,7 @@ function passoDeFerramenta(
 ): RespostaRoteirizada {
   const id = crypto.randomUUID();
   if (falha) falhasEsperadas.set(id, falha);
-  return {
-    stream: convertArrayToReadableStream([
-      {
-        type: "tool-call",
-        toolCallId: id,
-        toolName: nome,
-        input: JSON.stringify(entrada),
-      },
-      {
-        type: "finish",
-        finishReason: { unified: "tool-calls", raw: undefined },
-        usage: uso,
-      },
-    ]),
-  };
+  return passoDeChamada(nome, entrada, id);
 }
 
 /**

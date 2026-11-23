@@ -1,0 +1,58 @@
+import {
+  conferirIndiceDosTrechos,
+  criarBaseDeTrechosEmMemoria,
+  criarBaseEmMemoria,
+  criarCatalogo,
+  type Embedar,
+  type IndiceDosTrechos,
+  indexarTrechos,
+  lerVetoresGravados,
+  type Relogio,
+  semente,
+  trechosDosDocumentos,
+} from "../catalogo";
+
+/**
+ * The Trechos of the Documentos with their recorded vectors (docs/adr/0006),
+ * in memory. A Trecho changed since the recording throws instead of being
+ * embedded: the Avaliação measures the vectors the demo has.
+ */
+async function trechosGravados() {
+  const gravados = lerVetoresGravados();
+  const indice = { modelo: gravados.modelo, dimensoes: gravados.dimensoes };
+  const trechos = await indexarTrechos({
+    trechos: trechosDosDocumentos(),
+    gravados,
+    indice,
+    embedarTrechos: async () => {
+      throw new Error(
+        "Há Trechos sem vetor gravado ou desatualizados: rode pnpm embeddings:gravar",
+      );
+    },
+  });
+  return criarBaseDeTrechosEmMemoria(indice, trechos);
+}
+
+/**
+ * Builds a fresh catalog from `semente.ts`, in memory, for each Caso: the
+ * Trechos keep their recorded vectors, and only the question the model sends
+ * to buscar_politicas goes to `embedarPergunta`, since the model rewrites it.
+ */
+export async function fabricaDeCatalogos({
+  embeddings: { indice, embedarPergunta },
+  relogio,
+}: {
+  /** `indice` must be the model of the recorded vectors: vectors of two models never compare. */
+  embeddings: { indice: IndiceDosTrechos; embedarPergunta: Embedar };
+  relogio: Relogio;
+}) {
+  const trechos = await trechosGravados();
+  await conferirIndiceDosTrechos(trechos, indice);
+  return () =>
+    criarCatalogo({
+      base: criarBaseEmMemoria(semente),
+      trechos,
+      embedarPergunta,
+      relogio,
+    });
+}
