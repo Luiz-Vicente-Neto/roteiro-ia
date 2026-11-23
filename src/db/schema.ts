@@ -278,3 +278,20 @@ export const trechos = pgTable(
   },
   (t) => [index("trechos_palavras_idx").using("gin", t.palavras)],
 );
+
+/**
+ * How many messages each chave of the Limitador sent in each window: the
+ * Viajante's IP per hour, and the global one per Pacific day. Old windows are
+ * never read again.
+ */
+export const contagensDoLimitador = pgTable(
+  "contagens_do_limitador",
+  {
+    chave: text().notNull(),
+    inicioDaJanela: timestamp("inicio_da_janela", {
+      withTimezone: true,
+    }).notNull(),
+    contagem: integer().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.chave, t.inicioDaJanela] })],
+);

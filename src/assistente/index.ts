@@ -6,6 +6,7 @@ export {
   type ConversaNaoExiste,
   criarAssistente,
   eventosDe,
+  type LimiteAtingido,
   mensagensDe,
   propostaInexistente,
 } from "./assistente";
@@ -18,9 +19,17 @@ export {
   type ItemDaConversa,
 } from "./base";
 export {
+  criarLimitadorEmMemoria,
+  type Limitador,
+  type Limites,
+  resolverLimites,
+} from "./limitador";
+export {
   ASSISTENTE_INDISPONIVEL,
   COMECE_UMA_NOVA_CONVERSA,
   CONVERSA_CHEIA,
+  LIMITE_ATINGIDO,
+  MUITAS_MENSAGENS,
 } from "./mensagens";
 export {
   type Embeddings,

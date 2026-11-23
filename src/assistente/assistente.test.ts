@@ -22,6 +22,7 @@ import {
   chaveDoCard,
   criarAssistente,
   criarBaseDeConversasEmMemoria,
+  criarLimitadorEmMemoria,
   mensagensDe,
   type TextoDaResposta,
   textoDaResposta,
@@ -207,14 +208,30 @@ function conferirFerramentas(
   );
 }
 
+type OpcoesDoAssistente = Parameters<typeof criarAssistente>[0];
+type Assistente = ReturnType<typeof criarAssistente>;
+type PedidoDeEnvio = Parameters<Assistente["enviarMensagem"]>[0];
+
+/** The origem of every message whose test does not give one. */
+const ORIGEM_DE_TESTE = "203.0.113.1";
+
 /**
  * criarAssistente, with the tools' exceptions recorded and every answer's
- * stream checked by conferirFerramentas.
+ * stream checked by conferirFerramentas. Unless the test gives them, the
+ * Limitador is in memory and the limits never stop a message, and every
+ * message comes from ORIGEM_DE_TESTE.
  */
 function criarAssistenteDeTeste(
-  opcoes: Parameters<typeof criarAssistente>[0],
-): ReturnType<typeof criarAssistente> {
+  opcoes: Omit<OpcoesDoAssistente, "limitador" | "limites"> &
+    Partial<Pick<OpcoesDoAssistente, "limitador" | "limites">>,
+): Omit<Assistente, "enviarMensagem"> & {
+  enviarMensagem(
+    pedido: Omit<PedidoDeEnvio, "origem"> & { origem?: string },
+  ): ReturnType<Assistente["enviarMensagem"]>;
+} {
   const assistente = criarAssistente({
+    limitador: criarLimitadorEmMemoria(),
+    limites: { porOrigemPorHora: 1000, globalPorDia: 1000 },
     ...opcoes,
     catalogo: {
       ...opcoes.catalogo,
@@ -228,7 +245,10 @@ function criarAssistenteDeTeste(
     ...assistente,
     async enviarMensagem(pedido) {
       excecoes.length = 0;
-      const envio = await assistente.enviarMensagem(pedido);
+      const envio = await assistente.enviarMensagem({
+        origem: ORIGEM_DE_TESTE,
+        ...pedido,
+      });
       return envio.ok
         ? { ...envio, stream: conferirFerramentas(envio.stream) }
         : envio;
@@ -1362,6 +1382,114 @@ describe("lista de Conversas", () => {
   });
 });
 
+describe("limite de mensagens", () => {
+  /** An Assistente that answers every message with "Olá!", under `limites`. */
+  function assistenteLimitado(
+    limites: OpcoesDoAssistente["limites"],
+    inicio = "2026-12-01T09:00:00-03:00",
+  ) {
+    const tempo = relogioQueAnda(inicio);
+    const modelo = new MockLanguageModelV4({
+      doStream: async () => passoDeTexto("Olá!"),
+    });
+    const assistente = criarAssistenteDeTeste({
+      modelo,
+      catalogo,
+      conversas: criarBaseDeConversasEmMemoria(),
+      relogio: tempo.relogio,
+      limitador: criarLimitadorEmMemoria(),
+      limites,
+    });
+    /** Sends `texto` from `origem` and reads the whole answer; a refusal comes back as is. */
+    async function enviarDe(origem: string, texto = "Oi", conversa?: string) {
+      const envio = await assistente.enviarMensagem({
+        dono,
+        origem,
+        conversa,
+        texto,
+      });
+      if (envio.ok) await convertReadableStreamToArray(envio.stream);
+      return envio;
+    }
+    return { assistente, modelo, tempo, enviarDe };
+  }
+
+  it("acima do limite por IP, recusa sem chamar o modelo nem gravar nada, e outro IP continua passando", async () => {
+    const { assistente, modelo, enviarDe } = assistenteLimitado({
+      porOrigemPorHora: 2,
+      globalPorDia: 100,
+    });
+    const primeira = await enviarDe("198.51.100.7");
+    if (!primeira.ok) throw new Error(primeira.erro);
+    const conversa = primeira.conversa;
+    await enviarDe("198.51.100.7", "E em julho?", conversa);
+
+    const naMesma = await enviarDe("198.51.100.7", "E em agosto?", conversa);
+    const emNova = await enviarDe("198.51.100.7", "Bonito");
+
+    expect(naMesma).toEqual({ ok: false, erro: "LIMITE_ATINGIDO" });
+    expect(emNova).toEqual({ ok: false, erro: "LIMITE_ATINGIDO" });
+    expect(modelo.doStreamCalls).toHaveLength(2);
+    expect(await assistente.abrirConversa({ dono, conversa })).toHaveLength(4);
+    expect(await assistente.listarConversas({ dono })).toHaveLength(1);
+    expect(await enviarDe("198.51.100.8")).toMatchObject({ ok: true });
+  });
+
+  it("o limite por IP volta a liberar na hora seguinte", async () => {
+    const { tempo, enviarDe } = assistenteLimitado(
+      { porOrigemPorHora: 1, globalPorDia: 100 },
+      "2026-12-01T09:10:00-03:00",
+    );
+    await enviarDe("198.51.100.7");
+    tempo.avancarMinutos(49);
+    expect(await enviarDe("198.51.100.7")).toMatchObject({ ok: false });
+
+    tempo.avancarMinutos(2);
+
+    expect(await enviarDe("198.51.100.7")).toMatchObject({ ok: true });
+  });
+
+  it("um IP acima do próprio limite não gasta o teto global dos outros", async () => {
+    const { enviarDe } = assistenteLimitado({
+      porOrigemPorHora: 1,
+      globalPorDia: 2,
+    });
+    await enviarDe("198.51.100.7");
+    for (let i = 0; i < 5; i++) {
+      expect(await enviarDe("198.51.100.7")).toMatchObject({ ok: false });
+    }
+
+    expect(await enviarDe("198.51.100.8")).toMatchObject({ ok: true });
+  });
+
+  it("acima do teto global, barra qualquer IP até a meia-noite do Pacífico, e não a de São Paulo nem a de UTC", async () => {
+    // 20h in São Paulo is 23h UTC and 15h in Los Angeles (PST, UTC-8).
+    const { modelo, tempo, enviarDe } = assistenteLimitado(
+      { porOrigemPorHora: 100, globalPorDia: 3 },
+      "2026-12-01T20:00:00-03:00",
+    );
+    for (const ip of ["198.51.100.1", "198.51.100.2", "198.51.100.3"]) {
+      expect(await enviarDe(ip)).toMatchObject({ ok: true });
+    }
+    expect(await enviarDe("198.51.100.4")).toEqual({
+      ok: false,
+      erro: "LIMITE_ATINGIDO",
+    });
+
+    tempo.avancarMinutos(90); // 00:30 UTC
+    expect(await enviarDe("198.51.100.5")).toMatchObject({ ok: false });
+    tempo.avancarMinutos(180); // 00:30 in São Paulo
+    expect(await enviarDe("198.51.100.6")).toMatchObject({ ok: false });
+    tempo.avancarMinutos(268); // 23:58 in Los Angeles
+    expect(await enviarDe("198.51.100.7")).toMatchObject({ ok: false });
+    expect(modelo.doStreamCalls).toHaveLength(3);
+
+    tempo.avancarMinutos(3); // 00:01 in Los Angeles
+
+    expect(await enviarDe("198.51.100.8")).toMatchObject({ ok: true });
+  });
+});
+
 describe("Proposta", () => {
   // 2027-01-23 of gramado-serra-azul-3n has 3 Vagas.
   const gramado = {
@@ -1377,6 +1505,14 @@ describe("Proposta", () => {
    * everything else.
    */
   function assistenteComPropostas(...propostas: (typeof gramado)[]) {
+    return assistenteComPropostasELimites(undefined, ...propostas);
+  }
+
+  /** assistenteComPropostas, under `limites`, or under none that ever stops a message. */
+  function assistenteComPropostasELimites(
+    limites: OpcoesDoAssistente["limites"] | undefined,
+    ...propostas: (typeof gramado)[]
+  ) {
     const tempo = relogioQueAnda("2026-12-01T09:00:00-03:00");
     const catalogoNovo = criarCatalogo({
       ...textosDeTeste(),
@@ -1397,6 +1533,7 @@ describe("Proposta", () => {
       catalogo: catalogoNovo,
       conversas: criarBaseDeConversasEmMemoria(),
       relogio: tempo.relogio,
+      ...(limites && { limites }),
     });
     async function enviarEm(texto: string, conversa?: string) {
       const envio = await assistente.enviarMensagem({ dono, conversa, texto });
@@ -1689,5 +1826,52 @@ describe("Proposta", () => {
     expect(
       itens?.flatMap((i) => (i.tipo === "evento" ? [i.evento.tipo] : [])),
     ).toEqual(["proposta-confirmada", "proposta-descartada"]);
+  });
+
+  it("confirmar e descartar funcionam com o limite estourado, e não contam", async () => {
+    const saida = (pacote: string, data: string) => ({
+      pacote,
+      data,
+      grupo: casal,
+    });
+    const { assistente, enviarEm, conversaComPropostas } =
+      assistenteComPropostasELimites(
+        { porOrigemPorHora: 2, globalPorDia: 2 },
+        gramado,
+        saida("gramado-serra-azul-5n", "2027-01-24"),
+        saida("gramado-serra-azul-3n", "2027-01-09"),
+        saida("gramado-serra-azul-3n", "2027-01-16"),
+      );
+    const { conversa, ids } = await conversaComPropostas();
+    const [antes1 = "", antes2 = "", depois1 = "", depois2 = ""] = ids;
+    // Neither counts: the second message still passes.
+    await assistente.descartarProposta({ dono, conversa, proposta: antes1 });
+    await assistente.confirmarProposta({ dono, conversa, proposta: antes2 });
+    await enviarEm("E agora?", conversa);
+    expect(
+      await assistente.enviarMensagem({ dono, conversa, texto: "Mais uma" }),
+    ).toEqual({ ok: false, erro: "LIMITE_ATINGIDO" });
+
+    const descarte = await assistente.descartarProposta({
+      dono,
+      conversa,
+      proposta: depois1,
+    });
+    const confirmacao = await assistente.confirmarProposta({
+      dono,
+      conversa,
+      proposta: depois2,
+    });
+
+    expect(descarte).toMatchObject({
+      ok: true,
+      evento: {
+        evento: { tipo: "proposta-descartada", idDaProposta: depois1 },
+      },
+    });
+    expect(confirmacao).toMatchObject({
+      ok: true,
+      preReserva: { pacote: "gramado-serra-azul-3n", data: "2027-01-16" },
+    });
   });
 });

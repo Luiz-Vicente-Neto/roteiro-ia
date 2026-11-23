@@ -15,6 +15,8 @@ import {
   ASSISTENTE_INDISPONIVEL,
   COMECE_UMA_NOVA_CONVERSA,
   CONVERSA_CHEIA,
+  LIMITE_ATINGIDO,
+  MUITAS_MENSAGENS,
 } from "@/assistente/mensagens";
 import {
   cardsDaResposta,
@@ -83,18 +85,21 @@ export function Conversa({
       if (!isError && !isAbort) router.refresh();
     },
   });
-  // The route answers 409 with this erro; the transport puts the body in the message.
+  // The route answers 409 and 429 with these erros; the transport puts the body in the message.
   const cheia = error?.message.includes(CONVERSA_CHEIA) ?? false;
+  const limitada = error?.message.includes(LIMITE_ATINGIDO) ?? false;
+  const recusada = cheia || limitada;
 
   useEffect(() => {
-    if (!cheia) return;
+    if (!recusada) return;
     // The refused message was not kept: it leaves the list and goes back to
-    // the input, so the Viajante can copy it into a new Conversa.
+    // the input, so the Viajante can send it again later, or copy it into a
+    // new Conversa.
     setMessages((atuais) => {
       setTexto(textoDaMensagem(atuais.at(-1)));
       return atuais.slice(0, -1);
     });
-  }, [cheia, setMessages]);
+  }, [recusada, setMessages]);
 
   useEffect(() => {
     if (idDaConversa.current) return;
@@ -183,6 +188,13 @@ export function Conversa({
           <a href="/" className="font-medium underline">
             Nova Conversa
           </a>
+        </p>
+      ) : limitada ? (
+        <p
+          role="alert"
+          className="rounded-lg bg-amber-50 px-4 py-2 text-amber-900"
+        >
+          {MUITAS_MENSAGENS}
         </p>
       ) : (
         error && (

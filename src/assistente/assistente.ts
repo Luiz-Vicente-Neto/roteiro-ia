@@ -28,9 +28,16 @@ import type {
 import { historicoParaOModelo, semMarcador } from "./eventos";
 import { instrucoes } from "./instrucoes";
 import {
+  inicioDaHora,
+  inicioDoDiaNoPacifico,
+  type Limitador,
+  type Limites,
+} from "./limitador";
+import {
   ASSISTENTE_INDISPONIVEL,
   CONVERSA_CHEIA,
   FERRAMENTA_FALHOU,
+  LIMITE_ATINGIDO,
   PROPOSTA_INEXISTENTE,
 } from "./mensagens";
 import { type EstadoDaProposta, propostasDaResposta } from "./resposta";
@@ -91,6 +98,12 @@ export type ConversaNaoExiste = { ok: false; erro: "CONVERSA_NAO_EXISTE" };
 /** What enviarMensagem answers once the Conversa has TETO_DE_MENSAGENS. */
 export type ConversaCheia = { ok: false; erro: typeof CONVERSA_CHEIA };
 
+/** What enviarMensagem answers above the per-origem limit or the global daily cap. */
+export type LimiteAtingido = { ok: false; erro: typeof LIMITE_ATINGIDO };
+
+/** The Limitador's chave of the cap every origem shares. */
+const CHAVE_GLOBAL = "global";
+
 /** One Conversa as the sidebar lists it. */
 export type ConversaDaLista = Pick<
   Conversa,
@@ -127,6 +140,8 @@ export function criarAssistente({
   catalogo,
   conversas,
   relogio,
+  limitador,
+  limites,
 }: {
   modelo: LanguageModel;
   /**
@@ -139,8 +154,31 @@ export function criarAssistente({
   };
   conversas: BaseDeConversas;
   relogio: Relogio;
+  /** Counts only the Viajante's messages: confirming or discarding a Proposta never calls the model. */
+  limitador: Limitador;
+  limites: Limites;
 }) {
   const tools = paraToolsDoSdk(catalogo.ferramentas);
+
+  /**
+   * Counts one more message from `origem` and says whether it passes both
+   * limits. The global cap is counted only once the origem's own limit
+   * passes, so one origem sending above its limit never eats everyone's day.
+   * Its day ends at midnight in the Pacific, with the provider's quota.
+   */
+  async function dentroDosLimites(origem: string): Promise<boolean> {
+    const agora = relogio.agora();
+    const daOrigem = await limitador.contar(
+      `origem:${origem}`,
+      inicioDaHora(agora),
+    );
+    if (daOrigem > limites.porOrigemPorHora) return false;
+    const global = await limitador.contar(
+      CHAVE_GLOBAL,
+      inicioDoDiaNoPacifico(agora),
+    );
+    return global <= limites.globalPorDia;
+  }
 
   /** The Conversa `id` if it belongs to `dono`. For anyone else it does not exist. */
   async function conversaDo(dono: string, id: string) {
@@ -181,21 +219,29 @@ export function criarAssistente({
      * Sends the Viajante's `texto` in the Conversa `conversa`, or in a new one
      * when none is given. The Viajante's message is recorded before the model
      * is called, so it stays even if the provider fails; the Assistente's
-     * answer is recorded when its stream ends without a failure.
+     * answer is recorded when its stream ends without a failure. Above the
+     * Limitador's limits for `origem`, nothing is read, recorded or sent.
      */
     async enviarMensagem({
       dono,
+      origem,
       conversa: idDaConversa,
       texto: escrito,
     }: {
       dono: string;
+      /** Where the message came from (the Viajante's IP), for the Limitador. */
+      origem: string;
       conversa?: string;
       texto: string;
     }): Promise<
       | { ok: true; conversa: string; stream: ReadableStream<UIMessageChunk> }
       | ConversaNaoExiste
       | ConversaCheia
+      | LimiteAtingido
     > {
+      if (!(await dentroDosLimites(origem))) {
+        return { ok: false, erro: LIMITE_ATINGIDO };
+      }
       // Only confirmarProposta and descartarProposta write Eventos: a Viajante
       // who types the marker gets it removed before anything sees the text.
       const texto = semMarcador(escrito);

@@ -10,6 +10,13 @@ export const ASSISTENTE_INDISPONIVEL =
 /** The erro of a send refused because the Conversa reached its cap; the route and the browser match it too. */
 export const CONVERSA_CHEIA = "CONVERSA_CHEIA";
 
+/** The erro of a send refused by the Limitador; the route and the browser match it too. */
+export const LIMITE_ATINGIDO = "LIMITE_ATINGIDO";
+
+/** What the Viajante sees when a send is refused by the per-IP limit or the global daily cap. */
+export const MUITAS_MENSAGENS =
+  "Muitas mensagens em pouco tempo. Tente de novo mais tarde.";
+
 /** What the Viajante sees when a Conversa reaches its cap of messages. */
 export const COMECE_UMA_NOVA_CONVERSA =
   "Esta Conversa chegou ao limite de mensagens. Comece uma nova Conversa para continuar.";

@@ -4,6 +4,7 @@ import {
   type Assistente,
   criarAssistente,
   resolverEmbeddings,
+  resolverLimites,
   resolverModelo,
 } from "@/assistente";
 import { criarCatalogo, relogioDoSistema } from "@/catalogo";
@@ -12,14 +13,15 @@ import { criarBaseDeTrechosPostgres } from "@/db/base-de-trechos-postgres";
 import { criarBasePostgres } from "@/db/base-postgres";
 import { createDb } from "@/db/client";
 import { databaseUrl } from "@/db/env";
+import { criarLimitadorPostgres } from "@/db/limitador-postgres";
 import { COOKIE_DO_DONO, donoValido } from "./dono";
 
 let assistente: Assistente | undefined;
 
 /**
  * Built on the first request, not on import, so `next build` needs no key.
- * src/instrumentation.ts already checked MODELO, EMBEDDINGS, their keys and
- * the model of the stored Trechos at server start.
+ * src/instrumentation.ts already checked MODELO, EMBEDDINGS, their keys, the
+ * limits and the model of the stored Trechos at server start.
  */
 export function obterAssistente(): Assistente {
   if (!assistente) {
@@ -35,6 +37,8 @@ export function obterAssistente(): Assistente {
       }),
       conversas: criarBaseDeConversasPostgres(db),
       relogio,
+      limitador: criarLimitadorPostgres(db),
+      limites: resolverLimites(process.env),
     });
   }
   return assistente;

@@ -1,7 +1,7 @@
 import { createUIMessageStreamResponse } from "ai";
 import { z } from "zod";
 import { donoDaVisita, obterAssistente } from "@/app/servidor";
-import { CONVERSA_CHEIA } from "@/assistente";
+import { CONVERSA_CHEIA, LIMITE_ATINGIDO } from "@/assistente";
 
 // Thin layer: wiring only, no rules.
 
@@ -10,6 +10,16 @@ const Corpo = z.object({
   conversa: z.string().min(1).optional(),
   texto: z.string().trim().min(1),
 });
+
+/**
+ * Where the message came from, for the Limitador: the client's address the
+ * host's proxy puts first in x-forwarded-for. Without it (`next dev`), every
+ * message shares one origem.
+ */
+function origemDo(request: Request): string {
+  const primeiro = request.headers.get("x-forwarded-for")?.split(",")[0];
+  return primeiro?.trim() || "local";
+}
 
 export async function POST(request: Request) {
   const dono = await donoDaVisita();
@@ -24,7 +34,15 @@ export async function POST(request: Request) {
     );
   }
 
-  const envio = await obterAssistente().enviarMensagem({ dono, ...corpo.data });
+  const envio = await obterAssistente().enviarMensagem({
+    dono,
+    origem: origemDo(request),
+    ...corpo.data,
+  });
+  if (!envio.ok && envio.erro === LIMITE_ATINGIDO) {
+    // The browser shows "muitas mensagens em pouco tempo" for this erro.
+    return Response.json({ erro: envio.erro }, { status: 429 });
+  }
   if (!envio.ok && envio.erro === CONVERSA_CHEIA) {
     // The browser shows "comece uma nova Conversa" for this erro.
     return Response.json({ erro: envio.erro }, { status: 409 });
