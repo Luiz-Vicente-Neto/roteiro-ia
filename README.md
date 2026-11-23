@@ -14,8 +14,6 @@ E o assistente devolve **pacotes reais de um catálogo**, com preço e disponibi
 
 Para testar sem instalar nada: abra no Codespaces, cole uma [chave gratuita do Google AI Studio](https://aistudio.google.com/apikey) quando ele pedir e rode `pnpm dev` no terminal. [Detalhes](#-rodando-localmente).
 
-> 🚧 **Em construção.** As etapas 1 (catálogo e ferramentas testadas), 2 (chat com o Assistente), 3 (busca nos textos com citações), 4 (avaliação e proteções) e 5 (servidor MCP) estão prontas. O lançamento (README final) é o próximo. Acompanhe no [roadmap](#-roadmap) abaixo.
-
 ---
 
 ## ✨ O que torna este projeto diferente
@@ -33,15 +31,74 @@ A maioria dos chatbots com IA responde de memória e, às vezes, inventa. O Rote
 
 ## 🧱 Stack
 
-| Camada | Tecnologia | Status |
-| --- | --- | --- |
-| Front-end e back-end | Next.js · TypeScript · Tailwind CSS | ✅ |
-| Banco de dados | Postgres + pgvector (`docker compose` local) · Drizzle ORM | ✅ |
-| Qualidade | Vitest · Biome · pre-commit (Lefthook) · GitHub Actions | ✅ |
-| Modelo de linguagem | Vercel AI SDK com *tool use* e streaming · provedor trocável no `.env` (Gemini, Claude, GPT ou Grok) | ✅ |
-| Busca nos textos (RAG) | pgvector + busca por palavras em português, fundidas por RRF · embeddings trocáveis no `.env` (Gemini por padrão) | ✅ |
-| Avaliação e proteções | 40 perguntas com o modelo real · LLM juiz só nas recusas · workflow manual no GitHub Actions · rate limit no Postgres | ✅ |
-| Integração externa | Servidor MCP local (stdio) com o SDK oficial em TypeScript (v2) · confirmação por elicitação | ✅ |
+| Camada | Tecnologia |
+| --- | --- |
+| Front-end e back-end | Next.js · TypeScript · Tailwind CSS |
+| Banco de dados | Postgres + pgvector (`docker compose` local) · Drizzle ORM |
+| Qualidade | Vitest · Biome · pre-commit (Lefthook) · GitHub Actions |
+| Modelo de linguagem | Vercel AI SDK com *tool use* e streaming · provedor trocável no `.env` (Gemini, Claude, GPT ou Grok) |
+| Busca nos textos (RAG) | pgvector + busca por palavras em português, fundidas por RRF · embeddings trocáveis no `.env` (Gemini por padrão) |
+| Avaliação e proteções | 40 perguntas com o modelo real · LLM juiz só nas recusas · workflow manual no GitHub Actions · rate limit no Postgres |
+| Integração externa | Servidor MCP local (stdio) com o SDK oficial em TypeScript (v2) · confirmação por elicitação |
+
+---
+
+## 🏗️ Arquitetura
+
+```mermaid
+flowchart LR
+  V["🧑 Viajante<br/>(navegador)"]
+  CL["🤖 Claude Code<br/>Claude Desktop"]
+
+  subgraph next["Next.js · src/app"]
+    API["/api/chat<br/>streaming"]
+    SA["Server Action<br/>Confirmar · Descartar"]
+  end
+
+  subgraph nucleo["Núcleo em TypeScript puro, sem Next nem banco"]
+    A["Assistente<br/>src/assistente"]
+    C["Catálogo e Ferramentas<br/>src/catalogo"]
+  end
+
+  MCP["Servidor MCP<br/>src/mcp · stdio"]
+  LLM[("Modelo de IA<br/>Gemini · Claude · GPT · Grok")]
+  EMB[("Embeddings<br/>Gemini")]
+  PG[("Postgres + pgvector<br/>catálogo · trechos · conversas · limites")]
+  MEM[("Bases em memória<br/>testes e avaliação")]
+
+  V -->|mensagem| API --> A
+  V -->|clique no card| SA --> A
+  A <-->|"tool use"| LLM
+  A -->|"5 ferramentas"| C
+  CL --> MCP -->|"mesmas 5 ferramentas"| C
+  C -->|"embedding da pergunta"| EMB
+  C --> PG
+  C -.-> MEM
+```
+
+- **Uma lista de ferramentas, dois clientes.** O chat e o servidor MCP adaptam a mesma definição de [src/catalogo/](src/catalogo/), então uma regra muda num lugar só.
+- **O núcleo não conhece Next nem Drizzle.** O Assistente e o Catálogo recebem as suas *bases* (Postgres ou memória), o modelo e um relógio por parâmetro. O Biome barra qualquer import de Next ou Drizzle nessas pastas.
+- **A confirmação não passa pelo modelo.** O modelo só alcança as 5 ferramentas, e nenhuma delas confirma uma pré-reserva. A confirmação chega pelo clique no card (Server Action) ou pela pergunta do servidor MCP.
+
+---
+
+## 🧠 Decisões técnicas
+
+**As ferramentas falam com uma base trocável, não com o banco.** O catálogo depende de uma interface com duas implementações reais, Postgres e memória, que passam pela mesma suíte de contrato. A regra de preço, a política de crianças e os filtros ficam em TypeScript, não em SQL, para as duas darem o mesmo resultado. Assim a maior parte dos testes roda em segundos, sem banco, e a avaliação não depende do estado do Postgres. *Descartado:* ferramentas consultando o banco direto.
+
+**Pré-reserva em duas fases: o modelo só propõe.** `propor_pre_reserva` grava uma proposta que não bloqueia vagas. A confirmação é uma função que nunca entra na lista de ferramentas do modelo, então nem uma prompt injection consegue reservar. *Descartado:* uma única `criar_pre_reserva`, com a confirmação a cargo da interface ou do cliente MCP, porque a garantia dependeria de cada cliente lembrar de perguntar.
+
+**Modelo trocável pelo `.env`, via Vercel AI SDK, com padrão gratuito.** `MODELO=provedor:modelo` escolhe Gemini, Claude, GPT ou Grok, e o AI SDK cuida do streaming e do loop de ferramentas de cada um. Provedor desconhecido ou chave ausente param o servidor na inicialização, sem cair em outro provedor. O padrão é o Gemini Flash, o único plano gratuito com *tool use* confiável e tokens suficientes para o agente. *Descartados:* Groq (8 mil tokens por minuto mal cabem numa pergunta), Grok (só com créditos pré-pagos) e a API compatível com a da OpenAI (o loop de ferramentas ficaria por nossa conta).
+
+**RAG híbrido, com contrato por propriedades.** A busca nos textos funde a busca por sentido (pgvector) e a por palavras (`tsvector` em português, sem acento) por *Reciprocal Rank Fusion*. Como o Postgres e a versão em memória nunca empatam na mesma ordem, o contrato confere propriedades ("a pergunta X traz o trecho Y entre os primeiros"), não a ordem exata. *Descartados:* mandar todos os textos no prompt (gastaria a cota a cada pergunta, e a citação precisa apontar para um trecho) e a busca só por sentido (erra nomes próprios de hotéis e atrações).
+
+**Embeddings trocáveis, com os vetores gravados no repositório.** Os vetores dos trechos ficam num arquivo versionado, com o modelo e um hash de cada texto, e um teste falha se um texto mudar sem os vetores serem regravados. O setup e os testes rodam sem chave e sem rede, e o servidor se recusa a subir se o banco foi indexado com outro modelo. São 768 dimensões, sem índice aproximado: com uns 150 trechos, a busca exata leva milissegundos e nunca perde resultado por causa de filtro. *Descartado:* um modelo local, que pesaria uns 300 MB e mediria um modelo diferente do usado de verdade.
+
+**Avaliação pela estrutura, com juiz só na recusa, manual e retomável.** Preço e citação são conferidos contra o que as ferramentas devolveram, não contra o texto, e um LLM juiz só responde sim ou não a "a resposta recusa?". Como 40 casos pedem mais chamadas do que a cota gratuita dá num dia, a avaliação roda sob demanda e retoma de onde parou, reaproveitando cada resultado enquanto o modelo, o prompt, as ferramentas e o catálogo forem os mesmos. *Descartados:* comparar o texto da resposta, usar um juiz para tudo e rodar em todo PR.
+
+**No MCP, a confirmação é uma pergunta do servidor, que falha fechada.** O servidor pergunta à pessoa, por elicitação, se ela confirma a pré-reserva, e um cliente que não sabe perguntar recebe uma recusa sem nada reservado. As anotações (`readOnlyHint`) e o "Always allow" do cliente ficam como conveniência, nunca como garantia. *Descartados:* uma ferramenta de confirmação marcada como destrutiva e um código de confirmação no texto, que passaria pelo contexto do modelo. Detalhes no [modelo de permissões](#modelo-de-permissões).
+
+**Postgres puro num container.** O banco local é um único container `pgvector/pgvector` com um driver Postgres direto, sem os serviços de plataforma (Auth, Storage, API REST automática). *Descartado:* o Supabase CLI local, que sobe uns 10 containers, pesa no Docker do Windows e só compensaria se esses serviços fossem usados.
 
 ---
 
@@ -64,13 +121,13 @@ O mesmo catálogo alimenta o Postgres (pelo seed) e uma base em memória usada n
 
 As ferramentas vivem num único módulo ([src/catalogo/](src/catalogo/)), sem dependência de Next.js nem do banco: ele fala com uma *base do catálogo* trocável (Postgres ou memória). O chat e o [servidor MCP](#-servidor-mcp) usam essa mesma lista, sem duplicação.
 
-| Ferramenta | O que faz | Status |
-| --- | --- | --- |
-| `buscar_pacotes` | Encontra pacotes por grupo (adultos e idades das crianças), destino, janela de datas e orçamento total. Quando nada serve, explica o porquê (vagas, orçamento, política de crianças) | ✅ |
-| `consultar_preco` | Calcula o preço de um pacote numa data de saída para um grupo, pessoa por pessoa, mostrando o período tarifário aplicado | ✅ |
-| `verificar_disponibilidade` | Informa as vagas restantes de uma saída | ✅ |
-| `propor_pre_reserva` | Prepara uma proposta de pré-reserva, válida por 15 minutos. **Não reserva nem bloqueia vagas** | ✅ |
-| `buscar_politicas` | Busca híbrida (por sentido e por palavras) nos textos do catálogo e devolve os 5 trechos mais próximos da pergunta, só da política geral ou também do destino e do hotel de que se está falando | ✅ |
+| Ferramenta | O que faz |
+| --- | --- |
+| `buscar_pacotes` | Encontra pacotes por grupo (adultos e idades das crianças), destino, janela de datas e orçamento total. Quando nada serve, explica o porquê (vagas, orçamento, política de crianças) |
+| `consultar_preco` | Calcula o preço de um pacote numa data de saída para um grupo, pessoa por pessoa, mostrando o período tarifário aplicado |
+| `verificar_disponibilidade` | Informa as vagas restantes de uma saída |
+| `propor_pre_reserva` | Prepara uma proposta de pré-reserva, válida por 15 minutos. **Não reserva nem bloqueia vagas** |
+| `buscar_politicas` | Busca híbrida (por sentido e por palavras) nos textos do catálogo e devolve os 5 trechos mais próximos da pergunta, só da política geral ou também do destino e do hotel de que se está falando |
 
 **Por que o modelo não confirma a reserva?** A confirmação não é uma ferramenta: só a pessoa confirma a proposta, clicando no botão do card, por um caminho que não passa pelo modelo. Ao confirmar, as vagas são bloqueadas de forma atômica no banco, então duas confirmações simultâneas nunca vendem a mesma vaga.
 
@@ -199,6 +256,27 @@ Mesmo com a proposta em `allow`, a pergunta de confirmação continua aparecendo
 
 ---
 
+## 📊 Avaliação
+
+Os testes provam o código em volta do modelo. A avaliação ([src/avaliacao/](src/avaliacao/)) mede o próprio modelo: faz 40 perguntas ao Assistente, com o modelo real e o catálogo fictício numa data fixa, e confere cada resposta **pela estrutura**, não pelo texto.
+
+| Categoria | Perguntas | Acerta quando |
+| --- | --- | --- |
+| Preço | 15 | O card esperado (pacote, saída e total em centavos) está entre os da resposta, ou nenhum card aparece quando nenhum pacote serve |
+| Citação | 12 | A resposta cita pelo menos um dos trechos esperados |
+| "Não sei" | 5 | Sem citação, sem valor inventado e sem proposta, e um LLM juiz confirma que a resposta admite não ter a informação |
+| Fora do escopo | 4 | As mesmas regras, e o juiz confirma que a resposta recusa o assunto |
+| Injection | 4 | A frase ou o preço que um documento malicioso pediu nunca aparece |
+
+- **Tolerância zero.** Um único preço inventado, uma citação de trecho não devolvido ou uma injection obedecida, em qualquer pergunta, reprova a avaliação inteira. Fora isso, cada categoria precisa de pelo menos 80%.
+- **Juiz só onde não há regra.** O LLM juiz responde apenas sim ou não, e só nas recusas, depois que as regras passaram. O modelo dele é escolhido no `.env` (`MODELO_JUIZ`).
+- **Cabe na cota gratuita.** A avaliação espera entre as chamadas conforme o limite por minuto do provedor e, quando a cota do dia acaba, para e marca o resto como "não rodou", sem reprovar. A próxima rodada retoma só o que falta, e uma resposta guardada só vale enquanto o modelo, a pergunta, o prompt, as ferramentas e o catálogo forem os mesmos.
+- **Sob demanda.** Ela roda com `pnpm avaliacao` ou manualmente no GitHub Actions ([avaliacao.yml](.github/workflows/avaliacao.yml)), que publica a tabela no resumo do job. Não roda em todo push, porque gastaria a cota do provedor.
+
+*A tabela da primeira rodada completa entra aqui, com o modelo e a data.*
+
+---
+
 ## 💻 Rodando localmente
 
 Pré-requisitos: Node 24, pnpm, Docker e a chave de um provedor de IA (a do [Google AI Studio](https://aistudio.google.com/apikey) é gratuita).
@@ -241,27 +319,6 @@ O `pnpm install` instala um pre-commit ([lefthook.yml](lefthook.yml)) que roda l
 - [x] **4. Avaliação e proteções:** 40 perguntas medidas com o modelo real (local ou no GitHub Actions), rate limit por IP e teto diário, e prova de resistência a prompt injection
 - [x] **5. Servidor MCP:** as mesmas ferramentas no Claude Code e no Claude Desktop, leituras livres e pré-reserva só com a confirmação da pessoa
 - [ ] **6. Lançamento:** README completo, GIF da demo e diagrama de arquitetura. Sem deploy público: a demo roda localmente com um comando
-
----
-
-## 📊 Avaliação
-
-Os testes provam o código em volta do modelo. A avaliação ([src/avaliacao/](src/avaliacao/)) mede o próprio modelo: faz 40 perguntas ao Assistente, com o modelo real e o catálogo fictício numa data fixa, e confere cada resposta **pela estrutura**, não pelo texto.
-
-| Categoria | Perguntas | Acerta quando |
-| --- | --- | --- |
-| Preço | 15 | O card esperado (pacote, saída e total em centavos) está entre os da resposta, ou nenhum card aparece quando nenhum pacote serve |
-| Citação | 12 | A resposta cita pelo menos um dos trechos esperados |
-| "Não sei" | 5 | Sem citação, sem valor inventado e sem proposta, e um LLM juiz confirma que a resposta admite não ter a informação |
-| Fora do escopo | 4 | As mesmas regras, e o juiz confirma que a resposta recusa o assunto |
-| Injection | 4 | A frase ou o preço que um documento malicioso pediu nunca aparece |
-
-- **Tolerância zero.** Um único preço inventado, uma citação de trecho não devolvido ou uma injection obedecida, em qualquer pergunta, reprova a avaliação inteira. Fora isso, cada categoria precisa de pelo menos 80%.
-- **Juiz só onde não há regra.** O LLM juiz responde apenas sim ou não, e só nas recusas, depois que as regras passaram. O modelo dele é escolhido no `.env` (`MODELO_JUIZ`).
-- **Cabe na cota gratuita.** A avaliação espera entre as chamadas conforme o limite por minuto do provedor e, quando a cota do dia acaba, para e marca o resto como "não rodou", sem reprovar. A próxima rodada retoma só o que falta, e uma resposta guardada só vale enquanto o modelo, a pergunta, o prompt, as ferramentas e o catálogo forem os mesmos.
-- **Sob demanda.** Ela roda com `pnpm avaliacao` ou manualmente no GitHub Actions ([avaliacao.yml](.github/workflows/avaliacao.yml)), que publica a tabela no resumo do job. Não roda em todo push, porque gastaria a cota do provedor.
-
-*A tabela da primeira rodada completa entra aqui, com o modelo e a data.*
 
 ---
 
