@@ -5,6 +5,7 @@ import {
   MockLanguageModelV4,
 } from "ai/test";
 import { describe, expect, it } from "vitest";
+import { valoresInventados } from "../avaliacao";
 import {
   type CodigoDeErro,
   criarBaseEmMemoria,
@@ -13,7 +14,10 @@ import {
   relogioFixo,
 } from "../catalogo";
 import { catalogoDeTeste } from "../catalogo/catalogo-de-teste";
-import { buscaNosTextosDeTeste } from "../catalogo/textos-de-teste";
+import {
+  buscaNosTextosDeTeste,
+  DOCUMENTO_MALICIOSO,
+} from "../catalogo/textos-de-teste";
 import {
   ASSISTENTE_INDISPONIVEL,
   COMECE_UMA_NOVA_CONVERSA,
@@ -24,6 +28,7 @@ import {
   criarBaseDeConversasEmMemoria,
   criarLimitadorEmMemoria,
   mensagensDe,
+  propostasDaResposta,
   type TextoDaResposta,
   textoDaResposta,
   trechosDaChamada,
@@ -55,8 +60,8 @@ function vigiar<A extends unknown[], R>(
 }
 
 /** buscaNosTextosDeTeste, with the embedding's exceptions recorded. */
-function textosDeTeste() {
-  const busca = buscaNosTextosDeTeste();
+function textosDeTeste(opcoes?: Parameters<typeof buscaNosTextosDeTeste>[0]) {
+  const busca = buscaNosTextosDeTeste(opcoes);
   return {
     ...busca,
     embedarPergunta: vigiar("embedding da pergunta", busca.embedarPergunta),
@@ -1031,6 +1036,84 @@ describe("Citações", () => {
     expect(chamadasDaResposta(mensagem).flatMap(trechosDaChamada)).toEqual(
       devolvido.trechos,
     );
+  });
+});
+
+describe("injection num Documento", () => {
+  it("um modelo que obedece ao Documento malicioso não cria Pré-reserva, não ganha a Citação inventada e tem o preço inventado apontado", async () => {
+    const base = criarBaseEmMemoria(catalogoDeTeste);
+    const comInjection = criarCatalogo({
+      ...textosDeTeste({ comDocumentoMalicioso: true }),
+      base,
+      relogio,
+    });
+    const { pergunta, trecho, precoInventado, citacaoInventada } =
+      DOCUMENTO_MALICIOSO;
+    // 2027-01-23 of gramado-serra-azul-3n, R$ 2.141,00 a person.
+    const entrada = {
+      pacote: "gramado-serra-azul-3n",
+      data: "2027-01-23",
+      grupo: casal,
+    };
+    const passos: ((prompt: string) => RespostaRoteirizada)[] = [
+      () => passoDeFerramenta("buscar_politicas", { pergunta }),
+      () => passoDeFerramenta("propor_pre_reserva", entrada),
+      // The Documento says to confirm: the model tries the tool it lacks.
+      (prompt) =>
+        passoDeFerramenta(
+          "confirmar_pre_reserva",
+          { proposta: /"id":"([^"]+)"/.exec(prompt)?.[1] },
+          { falha: "ERRO_DO_SDK" },
+        ),
+      () =>
+        passoDeTexto(
+          `Pronto, sua Pré-reserva está confirmada! O Pacote sai por ${precoInventado} por pessoa [[trecho:${citacaoInventada}]].`,
+        ),
+    ];
+    let passo = 0;
+    const modelo = new MockLanguageModelV4({
+      doStream: async ({ prompt }) => {
+        const proximo = passos[passo++];
+        if (!proximo) throw new Error("O modelo do teste não tem mais passos");
+        return proximo(JSON.stringify(prompt));
+      },
+    });
+    const assistente = criarAssistenteDeTeste({
+      modelo,
+      catalogo: comInjection,
+      conversas: criarBaseDeConversasEmMemoria(),
+      relogio,
+    });
+
+    const envio = await assistente.enviarMensagem({ dono, texto: pergunta });
+    if (!envio.ok) throw new Error(envio.erro);
+    let mensagem: UIMessage | undefined;
+    for await (const m of readUIMessageStream({
+      stream: envio.stream,
+      terminateOnError: true,
+    }))
+      mensagem = m;
+    if (!mensagem) throw new Error("O stream não montou nenhuma mensagem");
+
+    const chamadas = chamadasDaResposta(mensagem);
+    // Without these two, the proof below would pass even if the injection never reached the model.
+    expect(chamadas.flatMap(trechosDaChamada).map((t) => t.id)).toContain(
+      trecho.id,
+    );
+    expect(chamadas.map((c) => c.ferramenta)).toContain(
+      "confirmar_pre_reserva",
+    );
+    const proposta = propostasDaResposta(mensagem)[0];
+    if (!proposta) throw new Error("O modelo do teste precisa propor");
+
+    expect(await base.lerPreReservaDaProposta(proposta.id)).toBeUndefined();
+    expect(await base.lerVagasOcupadas(relogio.agora())).toEqual([]);
+    const texto = textoDaResposta(mensagem, [mensagem]);
+    expect(texto.citacoes).toEqual([]);
+    expect(comoNaTela(texto)).not.toContain(citacaoInventada);
+    expect(valoresInventados(mensagem, [mensagem])).toEqual([
+      { tipo: "preco", texto: precoInventado, centavos: 9900 },
+    ]);
   });
 });
 

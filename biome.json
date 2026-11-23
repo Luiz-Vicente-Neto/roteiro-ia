@@ -44,6 +44,7 @@
       "includes": [
         "src/app/**",
         "src/db/**",
+        "src/avaliacao/**",
         "src/*.ts",
         "scripts/**",
         "!**/*.test.ts"
@@ -72,7 +73,7 @@
       }
     },
     {
-      "includes": ["src/catalogo/**", "src/assistente/**"],
+      "includes": ["src/catalogo/**/*.test.ts", "src/assistente/**/*.test.ts"],
       "linter": {
         "rules": {
           "style": {
@@ -92,6 +93,39 @@
                       "**/db/**"
                     ],
                     "message": "O Drizzle e o Postgres ficam só no adaptador em src/db (docs/adr/0001)."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "includes": ["src/catalogo/**", "src/assistente/**", "!**/*.test.ts"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["next", "next/**", "react", "react/**"],
+                    "message": "Os módulos catalogo e assistente são independentes de framework: não importe o Next."
+                  },
+                  {
+                    "group": [
+                      "drizzle-orm",
+                      "drizzle-orm/**",
+                      "postgres",
+                      "**/db/**"
+                    ],
+                    "message": "O Drizzle e o Postgres ficam só no adaptador em src/db (docs/adr/0001)."
+                  },
+                  {
+                    "group": ["**/avaliacao", "**/avaliacao/**"],
+                    "message": "A Avaliação importa o Assistente e o catálogo, nunca o contrário: só os testes deles a importam."
                   }
                 ]
               }
