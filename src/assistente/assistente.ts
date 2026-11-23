@@ -11,7 +11,13 @@ import {
   type UIMessageChunk,
 } from "ai";
 import { z } from "zod";
-import type { Catalogo, CodigoDeErro, Falha, Relogio } from "../catalogo";
+import type {
+  Catalogo,
+  CodigoDeErro,
+  Falha,
+  Ferramenta,
+  Relogio,
+} from "../catalogo";
 import type {
   BaseDeConversas,
   Conversa,
@@ -42,7 +48,7 @@ const PASSOS_DE_FERRAMENTA = 6;
  * other client of the ferramentas.
  */
 function paraToolsDoSdk(
-  ferramentas: Catalogo["ferramentas"],
+  ferramentas: readonly Ferramenta[],
 ): Record<string, Tool> {
   return Object.fromEntries(
     ferramentas.map((f) => [
@@ -127,10 +133,10 @@ export function criarAssistente({
    * The ferramentas go to the model; confirmarPreReserva never does
    * (docs/adr/0003): only the Viajante's click calls it, via confirmarProposta.
    */
-  catalogo: Pick<
-    Catalogo,
-    "ferramentas" | "confirmarPreReserva" | "situacaoDaProposta"
-  >;
+  catalogo: Pick<Catalogo, "confirmarPreReserva" | "situacaoDaProposta"> & {
+    /** Any Ferramentas: the Assistente never reads their results' types. */
+    ferramentas: readonly Ferramenta[];
+  };
   conversas: BaseDeConversas;
   relogio: Relogio;
 }) {

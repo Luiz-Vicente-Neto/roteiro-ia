@@ -535,3 +535,13 @@ export function criarCatalogo({
 }
 
 export type Catalogo = ReturnType<typeof criarCatalogo>;
+
+type FerramentaDoCatalogo = Catalogo["ferramentas"][number];
+
+/** The name of a Ferramenta the model can call. */
+export type NomeDeFerramenta = FerramentaDoCatalogo["nome"];
+
+/** What Ferramenta `N` gives back: its own result, or a Falha. */
+export type ResultadoDe<N extends NomeDeFerramenta> = Awaited<
+  ReturnType<Extract<FerramentaDoCatalogo, { nome: N }>["executar"]>
+>;

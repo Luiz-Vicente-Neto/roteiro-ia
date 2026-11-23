@@ -124,18 +124,20 @@ export function periodoPorExtenso({
   return `${periodoAplicado.nome} (×${fator.toLocaleString("pt-BR")})`;
 }
 
-/** One line about a tool call, readable without opening the JSON. */
-export function resumoDaChamada({ ferramenta, ok, saida }: Chamada): string {
-  if (!ok) {
-    const falha = saida as { erro?: string; mensagem?: string } | string;
-    return typeof falha === "string"
-      ? falha
-      : `${falha.erro ?? "Erro"}: ${falha.mensagem ?? ""}`;
+/**
+ * One line about a tool call, readable without opening the JSON. A new
+ * Ferramenta without its line here does not compile.
+ */
+export function resumoDaChamada(chamada: Chamada): string {
+  if (!chamada.ok) {
+    const { saida } = chamada;
+    return typeof saida === "string"
+      ? saida
+      : `${saida.erro}: ${saida.mensagem}`;
   }
-  const r = saida as Record<string, unknown>;
-  switch (ferramenta) {
+  switch (chamada.ferramenta) {
     case "buscar_pacotes": {
-      const n = (r.cotacoes as unknown[]).length;
+      const n = chamada.saida.cotacoes.length;
       return n === 0
         ? "Nenhuma Saída serviu"
         : plural(n, "Cotação encontrada", "Cotações encontradas");
@@ -143,17 +145,17 @@ export function resumoDaChamada({ ferramenta, ok, saida }: Chamada): string {
     case "buscar_politicas":
       // The panel lists each Trecho right below.
       return plural(
-        (r.trechos as unknown[]).length,
+        chamada.saida.trechos.length,
         "Trecho consultado",
         "Trechos consultados",
       );
     case "consultar_preco":
-      return `Total de ${reais(r.total as number)}`;
+      return `Total de ${reais(chamada.saida.total)}`;
     case "verificar_disponibilidade":
-      return vagasPorExtenso(r.vagasRestantes as number);
+      return vagasPorExtenso(chamada.saida.vagasRestantes);
     case "propor_pre_reserva":
       return "Proposta preparada, aguardando confirmação";
     default:
-      return "Concluída";
+      return chamada satisfies never;
   }
 }

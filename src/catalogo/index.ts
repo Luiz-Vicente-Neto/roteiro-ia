@@ -16,10 +16,15 @@ export {
   type TrechoEncontrado,
   type TrechoIndexado,
 } from "./base-de-trechos";
-export { type Catalogo, criarCatalogo } from "./catalogo";
+export {
+  type Catalogo,
+  criarCatalogo,
+  type NomeDeFerramenta,
+  type ResultadoDe,
+} from "./catalogo";
 export { trechosDosDocumentos } from "./documentos";
 export type { CodigoDeErro, Falha } from "./erros";
-export type { Ferramenta, ResultadoDeFerramenta } from "./ferramentas";
+export type { Ferramenta } from "./ferramentas";
 export type { Cotacao } from "./preco";
 export { type Relogio, relogioDoSistema, relogioFixo } from "./relogio";
 export { semente } from "./semente";

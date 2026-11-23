@@ -1,20 +1,45 @@
 // Reads an Assistente answer for the screen. Nothing from the server side, so the browser can import it.
 import { getToolName, isToolUIPart, type UIMessage } from "ai";
-import type { Cotacao, TrechoDaBusca } from "../catalogo";
+import type {
+  Cotacao,
+  Falha,
+  NomeDeFerramenta,
+  ResultadoDe,
+  TrechoDaBusca,
+} from "../catalogo";
 
 /** A card's Cotação: from buscar_pacotes it also lists the other dates that fit. */
 export type CotacaoDoCard = Cotacao & { outrasSaidas?: string[] };
 
-/** One tool call of an answer, as the "como cheguei nessa resposta" panel shows it. */
-export interface Chamada {
+interface ChamadaDeFerramenta {
   id: string;
-  ferramenta: string;
-  /** False when the call failed: the catalog's Falha or an SDK error. */
-  ok: boolean;
   entrada: unknown;
-  /** The raw result the model received, or the error text. */
-  saida: unknown;
 }
+
+/** A call that worked: `saida` is the result its Ferramenta types. */
+export type ChamadaQueDeuCerto = {
+  [N in NomeDeFerramenta]: ChamadaDeFerramenta & {
+    ferramenta: N;
+    ok: true;
+    saida: Extract<ResultadoDe<N>, { ok: true }>;
+  };
+}[NomeDeFerramenta];
+
+/**
+ * A call that failed: the catalog's Falha, or the error text of a call the SDK
+ * refused, even one to a Ferramenta that does not exist.
+ */
+export interface ChamadaQueFalhou extends ChamadaDeFerramenta {
+  ferramenta: string;
+  ok: false;
+  saida: Falha | string;
+}
+
+/**
+ * One tool call of an answer, as the "como cheguei nessa resposta" panel shows
+ * it. Narrow by `ok`, then by `ferramenta`, to read `saida` typed.
+ */
+export type Chamada = ChamadaQueDeuCerto | ChamadaQueFalhou;
 
 type Parte = UIMessage["parts"][number];
 
@@ -28,7 +53,11 @@ export function chamadasDaResposta(mensagem: UIMessage): Chamada[] {
       entrada: parte.input,
     };
     if (parte.state === "output-available") {
-      return [{ ...base, ok: deuCerto(parte.output), saida: parte.output }];
+      // The one place that trusts the stored history: the catalog is the only
+      // source of a tool's result, so it has the shape its Ferramenta types.
+      return deuCerto(parte.output)
+        ? [{ ...base, ok: true, saida: parte.output } as ChamadaQueDeuCerto]
+        : [{ ...base, ok: false, saida: parte.output as Falha }];
     }
     if (parte.state === "output-error") {
       return [{ ...base, ok: false, saida: parte.errorText }];
@@ -52,11 +81,10 @@ export function cardsDaResposta(mensagem: UIMessage): CotacaoDoCard[] {
   const cards: CotacaoDoCard[] = [];
   for (const chamada of chamadas) {
     if (!chamada.ok) continue;
-    if (chamada === ultimaBusca) {
-      // The catalog is the only source of these results (see catalogo/busca.ts).
-      cards.push(...(chamada.saida as { cotacoes: CotacaoDoCard[] }).cotacoes);
+    if (chamada.ferramenta === "buscar_pacotes") {
+      if (chamada === ultimaBusca) cards.push(...chamada.saida.cotacoes);
     } else if (chamada.ferramenta === "consultar_preco") {
-      const { ok: _, ...cotacao } = chamada.saida as Cotacao & { ok: true };
+      const { ok: _, ...cotacao } = chamada.saida;
       cards.push(cotacao);
     }
   }
@@ -106,8 +134,7 @@ export type EstadoDaProposta =
 export function propostasDaResposta(mensagem: UIMessage): PropostaDoCard[] {
   return chamadasDaResposta(mensagem).flatMap((chamada) => {
     if (!chamada.ok || chamada.ferramenta !== "propor_pre_reserva") return [];
-    // The catalog is the only source of this result (see catalogo/catalogo.ts).
-    const { id, cotacao, expiraEm } = chamada.saida as PropostaDoCard;
+    const { id, cotacao, expiraEm } = chamada.saida;
     return [{ id, cotacao, expiraEm }];
   });
 }
@@ -224,8 +251,7 @@ function trechosAte(
 /** The Trechos one call returned: none unless it is a buscar_politicas that worked. */
 export function trechosDaChamada(chamada: Chamada): TrechoDaBusca[] {
   if (!chamada.ok || chamada.ferramenta !== "buscar_politicas") return [];
-  // The catalog is the only source of this result (see catalogo/catalogo.ts).
-  return (chamada.saida as { trechos: TrechoDaBusca[] }).trechos;
+  return chamada.saida.trechos;
 }
 
 /** All the text of a message, as written: markers and all. */

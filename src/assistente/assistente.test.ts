@@ -715,7 +715,7 @@ describe("buscar_politicas no chat", () => {
       ok: true,
       entrada: { pergunta: "posso cancelar?" },
     });
-    const { trechos } = chamada.saida as { trechos: { id: string }[] };
+    const trechos = trechosDaChamada(chamada);
     expect(trechos.map((t) => t.id)).toContain(
       "politica-da-agencia#cancelamento",
     );
