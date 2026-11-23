@@ -20,7 +20,7 @@ A maioria dos chatbots com IA responde de memória e, às vezes, inventa. O Rote
 - **📚 Toda resposta cita a fonte.** Políticas, regras e descrições vêm de uma busca semântica (RAG), e o trecho usado aparece junto da resposta.
 - **🔍 Transparência total.** Um painel *"como cheguei nessa resposta"* mostra cada ferramenta chamada e cada fonte consultada.
 - **📏 Qualidade medida, não prometida.** Uma avaliação com 40 perguntas roda o assistente com o modelo de verdade e confere preço, fonte e recusa pelos dados que as ferramentas devolveram, não pelo texto.
-- **🔌 Aberto via MCP.** As mesmas ferramentas ficam expostas como servidor MCP, para qualquer cliente compatível (Claude Desktop, Claude Code) consultar o catálogo.
+- **🔌 Aberto via MCP.** As mesmas ferramentas ficam expostas como [servidor MCP](#-servidor-mcp): o Claude Code e o Claude Desktop consultam o catálogo livremente, e a pré-reserva só acontece quando a própria pessoa confirma a pergunta do servidor.
 - **🛡️ Seguro por padrão.** Recusa assuntos fora do escopo, admite quando não sabe, resiste a prompt injection e só faz pré-reserva com confirmação explícita.
 
 ---
