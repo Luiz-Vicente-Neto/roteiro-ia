@@ -8,7 +8,7 @@ Você descreve a viagem que tem na cabeça:
 
 E o assistente devolve **pacotes reais de um catálogo**, com preço e disponibilidade consultados na hora e a fonte de cada informação.
 
-> 🚧 **Em construção.** As etapas 1 (catálogo e ferramentas testadas), 2 (chat com o Assistente), 3 (busca nos textos com citações) e 4 (avaliação e proteções) estão prontas. O servidor MCP é o próximo. Acompanhe no [roadmap](#-roadmap) abaixo.
+> 🚧 **Em construção.** As etapas 1 (catálogo e ferramentas testadas), 2 (chat com o Assistente), 3 (busca nos textos com citações), 4 (avaliação e proteções) e 5 (servidor MCP) estão prontas. O lançamento, com deploy público, é o próximo. Acompanhe no [roadmap](#-roadmap) abaixo.
 
 ---
 
@@ -35,7 +35,7 @@ A maioria dos chatbots com IA responde de memória e, às vezes, inventa. O Rote
 | Modelo de linguagem | Vercel AI SDK com *tool use* e streaming · provedor trocável no `.env` (Gemini, Claude, GPT ou Grok) | ✅ |
 | Busca nos textos (RAG) | pgvector + busca por palavras em português, fundidas por RRF · embeddings trocáveis no `.env` (Gemini por padrão) | ✅ |
 | Avaliação e proteções | 40 perguntas com o modelo real · LLM juiz só nas recusas · workflow manual no GitHub Actions · rate limit no Postgres | ✅ |
-| Integração externa | Servidor MCP (SDK oficial em TypeScript) | 🔜 |
+| Integração externa | Servidor MCP local (stdio) com o SDK oficial em TypeScript (v2) · confirmação por elicitação | ✅ |
 | Deploy | Vercel + Supabase | 🔜 |
 
 ---
@@ -57,7 +57,7 @@ O mesmo catálogo alimenta o Postgres (pelo seed) e uma base em memória usada n
 
 ## 🛠️ Ferramentas do agente
 
-As ferramentas vivem num único módulo ([src/catalogo/](src/catalogo/)), sem dependência de Next.js nem do banco: ele fala com uma *base do catálogo* trocável (Postgres ou memória). O chat já usa essa lista, e o servidor MCP vai usar a mesma, sem duplicação.
+As ferramentas vivem num único módulo ([src/catalogo/](src/catalogo/)), sem dependência de Next.js nem do banco: ele fala com uma *base do catálogo* trocável (Postgres ou memória). O chat e o [servidor MCP](#-servidor-mcp) usam essa mesma lista, sem duplicação.
 
 | Ferramenta | O que faz | Status |
 | --- | --- | --- |
@@ -124,6 +124,76 @@ O contador fica no Postgres, com um upsert atômico, então duas mensagens ao me
 
 ---
 
+## 🔌 Servidor MCP
+
+As cinco ferramentas do catálogo também rodam como um servidor MCP local ([src/mcp/](src/mcp/)), então dá para perguntar *"tem Gramado em julho para um casal?"* no Claude Code ou no Claude Desktop e receber cotações reais, sem abrir a demo. O modelo ali é o do cliente: o servidor não chama o nosso modelo e não gasta a cota da demo.
+
+### Modelo de permissões
+
+| O quê | Como é protegido | Quem garante |
+| --- | --- | --- |
+| `buscar_pacotes`, `consultar_preco`, `verificar_disponibilidade`, `buscar_politicas` | Livres: só leem o catálogo e não mudam nada | O próprio código: elas não têm como gravar |
+| `propor_pre_reserva` | Grava a proposta e, na mesma chamada, o **servidor** pergunta à pessoa, pelo cliente, se ela confirma o pacote, a data, o grupo e o total. Só a resposta "confirmar" cria a pré-reserva | O servidor: a resposta vem do cliente, fora do que o modelo escreve, e não existe ferramenta de confirmação |
+| Cliente que não sabe fazer a pergunta | **Falha fechada:** nada é reservado, e a resposta aponta o chat web | O servidor |
+| Anotações (`readOnlyHint` etc.) e aprovação do cliente ("Always allow", regras `allow`) | Só conveniência, nunca garantia | Ninguém: a especificação do MCP manda o cliente tratar anotações como não confiáveis, e a aprovação é configurada pela pessoa |
+
+**Por que uma pergunta do servidor, e não a aprovação do cliente?** Um "Always allow" deixaria o modelo, ou uma prompt injection num texto do catálogo, reservar sozinho. A pergunta de confirmação do servidor (uma elicitação de formulário do MCP) não passa pelos argumentos que o modelo escreve, e o id da proposta atravessa a pergunta num estado assinado com HMAC, com chave aleatória por processo e validade de 15 minutos, então uma resposta "confirmar" só vale para a proposta que foi mostrada. É a mesma regra do chat: só a pessoa confirma, nunca o modelo.
+
+### Qual cliente confirma uma pré-reserva hoje
+
+| Cliente | Consulta o catálogo | Confirma uma pré-reserva |
+| --- | --- | --- |
+| Claude Code (terminal) | ✅ | ✅ mostra a pergunta de confirmação |
+| Claude Code (extensão do VS Code) | ✅ | ❌ não mostra a pergunta e responde "não" sozinho, então nada é reservado. Para confirmar, use o Claude Code no terminal |
+| Claude Desktop (chat) | ✅ | ❌ não mostra a pergunta, então a pré-reserva é recusada sem reservar nada, e a resposta aponta o chat web |
+
+Se esses clientes passarem a mostrar elicitações, nada muda no servidor: a mesma pergunta passa a aparecer lá. Depois do deploy, uma alternativa é a elicitação em URL, em que a pessoa confirma numa página do próprio app web.
+
+### Conectar
+
+O servidor precisa do banco no ar: `pnpm db:up` (na primeira vez, também `pnpm db:setup`). O servidor lê o `.env` do projeto pelo caminho absoluto, de onde quer que o cliente o inicie, e confere os trechos indexados ao subir: se algo faltar, ele para com a mensagem no log do cliente. Para testar à mão no terminal, `pnpm mcp`.
+
+**Claude Code:** o [.mcp.json](.mcp.json) da raiz já registra o servidor. Abra o projeto no Claude Code e aprove o servidor `roteiro-ia` quando ele perguntar.
+
+**Claude Desktop:** em *Settings → Developer → Edit Config*, acrescente ao `claude_desktop_config.json` (no Windows, `%APPDATA%\Claude\claude_desktop_config.json`) e reinicie o app. Troque os dois caminhos pelo da sua cópia do repositório:
+
+```json
+{
+  "mcpServers": {
+    "roteiro-ia": {
+      "command": "node",
+      "args": [
+        "--import",
+        "file:///C:/caminho/para/roteiro-ia/node_modules/tsx/dist/loader.mjs",
+        "C:\\caminho\\para\\roteiro-ia\\scripts\\mcp.ts"
+      ]
+    }
+  }
+}
+```
+
+O Desktop inicia o processo fora da pasta do projeto, então o `tsx` vai por caminho absoluto, como URL `file:///` (espaços viram `%20`): um `--import tsx` simples não acha o pacote, e um caminho `C:\...` direto o Node não aceita no `--import`. O `node` chamado direto evita os atalhos `.cmd` do pnpm no Windows. No macOS e no Linux, use os caminhos normais (`file:///Users/...` e `/Users/.../scripts/mcp.ts`).
+
+**Permissões no Claude Code (opcional):** para as leituras não pedirem aprovação e a proposta continuar perguntando, nas configurações de permissões do Claude Code:
+
+```json
+{
+  "permissions": {
+    "allow": [
+      "mcp__roteiro-ia__buscar_pacotes",
+      "mcp__roteiro-ia__consultar_preco",
+      "mcp__roteiro-ia__verificar_disponibilidade",
+      "mcp__roteiro-ia__buscar_politicas"
+    ],
+    "ask": ["mcp__roteiro-ia__propor_pre_reserva"]
+  }
+}
+```
+
+Mesmo com a proposta em `allow`, a pergunta de confirmação continua aparecendo.
+
+---
+
 ## 💻 Rodando localmente
 
 Pré-requisitos: Node 24, pnpm, Docker e a chave de um provedor de IA (a do [Google AI Studio](https://aistudio.google.com/apikey) é gratuita).
@@ -144,6 +214,7 @@ Abra <http://localhost:3000> e converse. O `.env.example` traz um exemplo de `MO
 | `pnpm db:generate` | Gera uma migration a partir do esquema do Drizzle |
 | `pnpm embeddings:gravar` | Regrava os vetores dos trechos depois de editar um documento (precisa da chave do provedor de embeddings) |
 | `pnpm avaliacao` | Roda a [avaliação](#-avaliação) com o modelo do `.env` (`--categoria <c>` ou `--caso <id>` para rodar só uma parte) |
+| `pnpm mcp` | Sobe o [servidor MCP](#-servidor-mcp) no stdio (normalmente quem inicia é o cliente) |
 | `pnpm lint` / `pnpm format` | Confere / corrige lint e formatação (Biome) |
 | `pnpm typecheck` | Checa os tipos |
 | `pnpm test` | Testes em memória |
@@ -160,7 +231,7 @@ O `pnpm install` instala um pre-commit ([lefthook.yml](lefthook.yml)) que roda l
 - [x] **2. Agente:** chat com streaming chamando as ferramentas, cards de cotação, pré-reserva confirmada por botão e histórico de conversas
 - [x] **3. RAG:** busca híbrida nos documentos do catálogo, com citação de cada trecho em nota de rodapé
 - [x] **4. Avaliação e proteções:** 40 perguntas medidas com o modelo real (local ou no GitHub Actions), rate limit por IP e teto diário, e prova de resistência a prompt injection
-- [ ] **5. Servidor MCP:** ferramentas expostas com permissões mínimas
+- [x] **5. Servidor MCP:** as mesmas ferramentas no Claude Code e no Claude Desktop, leituras livres e pré-reserva só com a confirmação da pessoa
 - [ ] **6. Lançamento:** README completo, GIF da demo, diagrama de arquitetura e deploy público
 
 ---
