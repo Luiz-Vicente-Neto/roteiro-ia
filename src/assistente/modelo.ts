@@ -32,7 +32,7 @@ type Provedor = keyof typeof PROVEDORES;
 /**
  * The providers that make embeddings (the Claude API does not), each with how
  * a search wants its texts written. gemini-embedding-2 takes no task type:
- * the task goes in a prefix instead (docs/pesquisa/etapa-3-embeddings-e-busca-hibrida.md).
+ * the task goes in a prefix instead.
  */
 const DE_EMBEDDINGS = {
   google: {

@@ -1,6 +1,7 @@
 # Git hooks, installed by `pnpm install`. The same checks run in CI
 # (.github/workflows/ci.yml); the Postgres tests run only there, since
-# they need Docker.
+# they need Docker. `nomes-locais` runs only here: it reads this clone's
+# .git/info/exclude, which CI does not have.
 pre-commit:
   parallel: true
   jobs:
@@ -10,3 +11,5 @@ pre-commit:
       run: pnpm typecheck
     - name: testes
       run: pnpm test
+    - name: nomes-locais
+      run: node scripts/nomes-locais.mjs
